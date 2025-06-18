@@ -1,0 +1,117 @@
+﻿@page "/portfolio"
+@using PortfolioOptimizer.Data;
+@using PortfolioOptimizer.Services
+@inject OptimizerService OptimizerService
+@using Microsoft.AspNetCore.Components.Forms
+@rendermode InteractiveServer
+
+<h3>Modern Portfolio Theory (MPT) Portfolio Optimizer</h3>
+
+<InputFile OnChange="HandleFile" accept=".csv" />
+
+@if (Stock != null)
+{
+    <h4>@Stock.Name Metrics</h4>
+    <ul>
+        <li><b>Price Rows:</b> @Stock.Prices.Count</li>
+        <li><b>Annualized Return:</b> @AnnualizedReturn:P2</li>
+        <li><b>Volatility:</b> @AnnualizedVolatility:P2</li>
+        <li><b>Sharpe Ratio:</b> @SharpeRatio:F2</li>
+    </ul>
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Open</th>
+                <th>Close</th>
+                <th>Adj Close</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var price in Stock.Prices.Take(20))
+            {
+                <tr>
+                    <td>@price.Date.ToString("yyyy-MM-dd")</td>
+                    <td>@price.Open</td>
+                    <td>@price.Close</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (!string.IsNullOrEmpty(Error))
+{
+     <div class="alert alert-danger">@Error</div>
+}
+
+@code {
+    public Stock? Stock { get; set; }
+    public string Error { get; set; } = string.Empty;
+    public double AnnualizedReturn { get; set; }
+    public double AnnualizedVolatility { get; set; }
+    public double SharpeRatio { get; set; }
+
+    private async Task HandleFile(InputFileChangeEventArgs e)
+    {
+
+        Error = "";
+        var file = e.File;
+        if (file == null)
+        {
+            Error = "No file selected.";
+            return;
+        }
+        try
+        {
+            using var stream = file.OpenReadStream();
+
+            // Todo: Handle large files with a limit
+            using var reader = new StreamReader(stream);
+            var content = await reader.ReadToEndAsync();
+
+            // Todo change this so it accepts content instead of the stream
+            Stock = FileUtils.ParseCsvSingleStock(content);
+            if (Stock.Prices.Count > 1)
+            {
+                CalculateMetrics();
+            }
+        }
+        catch (Exception ex)
+        {
+            Error = $"Error: {ex.Message}";
+        }
+    }
+
+    // Calculate annualized return and Sharpe Ratio
+    private void CalculateMetrics()
+    {
+        // Sort by date if possible
+        var prices = Stock!.Prices.OrderBy(p => p.Date).ToList();
+        if (prices.Count < 2) return;
+
+        // Calculate daily returns
+        var returns = new List<double>();
+        for (int i = 1; i < prices.Count; i++)
+        {
+            if (prices[i - 1].Close == 0) continue;
+            var r = (prices[i].Close - prices[i - 1].Close) / prices[i - 1].Close;
+            returns.Add((double)r);
+        }
+
+        // Assume 252 trading days/year
+        var avgReturn = returns.Average();
+        AnnualizedVolatility = StdDev(returns) * Math.Sqrt(252); // Annualized volatility
+        AnnualizedReturn = Math.Pow(1 + (double)avgReturn, 252) - 1; // Annualized return
+        SharpeRatio = AnnualizedVolatility > 0 ? AnnualizedReturn / AnnualizedVolatility: 0;
+    }
+
+    // Use a proper library
+    private double StdDev(List<double> returns)
+    {
+        if (returns.Count < 2) return 0;
+        var avg = returns.Average();
+        var sumSq = returns.Sum(v => Math.Pow(v - avg, 2));
+        return Math.Sqrt(sumSq / (returns.Count - 1));
+    }
+}
