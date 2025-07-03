@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace PortfolioOptimizer.Data
 {
-    public class PortfolioMetrics
+    public class StockMetrics
     {
         [Key]
         public int Id { get; set; }
@@ -14,7 +14,7 @@ namespace PortfolioOptimizer.Data
         public decimal AnnualVolatility { get; set; }
         public decimal AnnualSharpeRatio { get; set; }
 
-        // Navigation property: Each portfolio metrics belongs to one portfolio
-        public Portfolio Portfolio { get; set; } = new();
+        // Navigation property: Each stock metrics belongs to one stock
+        public Stock Portfolio { get; set; } = new();
     }
 }

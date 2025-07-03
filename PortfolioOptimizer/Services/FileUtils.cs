@@ -55,7 +55,7 @@ namespace PortfolioOptimizer.Services
                     Date = date,
                     Open = open,
                     Close = close,
-                    Stock = stock // optional for initial population
+                    Stock = stock
                 };
 
                 // Populate Stock object

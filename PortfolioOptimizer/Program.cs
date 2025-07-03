@@ -5,6 +5,7 @@ using PortfolioOptimizer.Components;
 using PortfolioOptimizer.Components.Account;
 using PortfolioOptimizer.Data;
 using PortfolioOptimizer.Services;
+using PortfolioOptimizer.Services.Interfaces;
 
 namespace PortfolioOptimizer
 {
@@ -41,7 +42,7 @@ namespace PortfolioOptimizer
                 .AddDefaultTokenProviders();
 
             builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
-            builder.Services.AddSingleton<OptimizerService>();
+            builder.Services.AddSingleton<IOptimizerService, OptimizerService>();
 
             var app = builder.Build();
 
