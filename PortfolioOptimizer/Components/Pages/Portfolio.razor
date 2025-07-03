@@ -9,81 +9,201 @@
 
 <h3>Modern Portfolio Theory (MPT) Portfolio Optimizer</h3>
 
-<InputFile OnChange="HandleFile" accept=".csv" />
+<div class="mb-3">
+    <label class="form-label">Upload Stock CSV Files (minimum 2 required):</label>
+    <InputFile OnChange="HandleFiles" accept=".csv" multiple />
+</div>
 
-@if (Stock != null)
+@if (Stocks.Any())
 {
-    <h4>@Stock.Name Metrics</h4>
-    <ul>
-        <li><b>Price Rows:</b> @Stock.Prices.Count</li>
-        <li><b>Annualized Return:</b> @AnnualizedReturn:P2</li>
-        <li><b>Volatility:</b> @AnnualizedVolatility:P2</li>
-        <li><b>Sharpe Ratio:</b> @SharpeRatio:F2</li>
-    </ul>
-    <table class="table table-sm">
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>Open</th>
-                <th>Close</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var price in Stock.Prices.Take(20))
+    <h4>Uploaded Stocks (@Stocks.Count)</h4>
+    @foreach (var stock in Stocks)
+    {
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5>@stock.Name</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <ul class="list-unstyled">
+                            <li><b>Price Rows:</b> @stock.Prices.Count</li>
+                            <li><b>Annualized Return:</b> @(StockMetrics[stock.Name].AnnualReturn.ToString("P2"))</li>
+                            <li><b>Volatility:</b> @(StockMetrics[stock.Name].AnnualVolatility.ToString("P2"))</li>
+                            <li><b>Sharpe Ratio:</b> @(StockMetrics[stock.Name].AnnualSharpeRatio.ToString("F2"))</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Open</th>
+                                    <th>Close</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var price in stock.Prices.Take(5))
+                                {
+                                    <tr>
+                                        <td>@price.Date.ToString("yyyy-MM-dd")</td>
+                                        <td>@price.Open</td>
+                                        <td>@price.Close</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <div class="mb-3">
+        <button class="btn btn-primary" @onclick="CalculateOptimalAllocation" disabled="@(Stocks.Count < 2 || IsCalculating)">
+            @if (IsCalculating)
             {
-                <tr>
-                    <td>@price.Date.ToString("yyyy-MM-dd")</td>
-                    <td>@price.Open</td>
-                    <td>@price.Close</td>
-                </tr>
+                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                <text>Calculating...</text>
             }
-        </tbody>
-    </table>
+            else
+            {
+                <text>Calculate Optimal Allocation</text>
+            }
+        </button>
+    </div>
+
+    @if (OptimalAllocation != null && OptimalAllocation.Any())
+    {
+        <div class="card">
+            <div class="card-header">
+                <h5>Optimal Portfolio Allocation</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <strong>Expected Annual Return:</strong> @PortfolioMetrics.AnnualReturn.ToString("P2")
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Portfolio Volatility:</strong> @PortfolioMetrics.AnnualVolatility.ToString("P2")
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Sharpe Ratio:</strong> @PortfolioMetrics.AnnualSharpeRatio.ToString("F2")
+                    </div>
+                </div>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Stock</th>
+                            <th>Allocation</th>
+                            <th>Weight</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var allocation in OptimalAllocation)
+                        {
+                            <tr>
+                                <td>@allocation.Key</td>
+                                <td>@allocation.Value.ToString("P2")</td>
+                                <td>
+                                    <div class="progress">
+                                        <div class="progress-bar" role="progressbar" style="width: @(allocation.Value * 100)%">
+                                            @allocation.Value.ToString("P2")
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
 }
 
 @if (!string.IsNullOrEmpty(Error))
 {
-     <div class="alert alert-danger">@Error</div>
+    <div class="alert alert-danger">@Error</div>
 }
 
 @code {
-    public Stock? Stock { get; set; }
+    public List<Stock> Stocks { get; set; } = new();
+    public Dictionary<string, StockMetrics> StockMetrics { get; set; } = new();
+    public Dictionary<string, decimal> OptimalAllocation { get; set; } = new();
+    public PortfolioMetrics PortfolioMetrics { get; set; } = new();
     public string Error { get; set; } = string.Empty;
-    public decimal AnnualizedReturn { get; set; }
-    public decimal AnnualizedVolatility { get; set; }
-    public decimal SharpeRatio { get; set; }
+    public bool IsCalculating { get; set; } = false;
 
-    private async Task HandleFile(InputFileChangeEventArgs e)
+    private async Task HandleFiles(InputFileChangeEventArgs e)
     {
-
         Error = "";
-        var file = e.File;
-        if (file == null)
+        Stocks.Clear();
+        StockMetrics.Clear();
+        OptimalAllocation.Clear();
+
+        if (e.FileCount < 2)
         {
-            Error = "No file selected.";
+            Error = "Please select at least 2 CSV files.";
             return;
         }
+
         try
         {
-            using var stream = file.OpenReadStream();
-
-            // Todo: Handle large files with a limit
-            using var reader = new StreamReader(stream);
-            var content = await reader.ReadToEndAsync();
-
-            // Todo change this so it accepts content instead of the stream
-            Stock = FileUtils.ParseCsvSingleStock(content);
-            if (Stock.Prices.Count > 1)
+            foreach (var file in e.GetMultipleFiles())
             {
-                var stockMetrics = OptimizerService.CalculateStockMetrics(Stock);
-                AnnualizedReturn = stockMetrics.AnnualReturn;
-                AnnualizedVolatility = stockMetrics.AnnualVolatility;
-                SharpeRatio = stockMetrics.AnnualSharpeRatio;
+                using var stream = file.OpenReadStream();
+                using var reader = new StreamReader(stream);
+                var content = await reader.ReadToEndAsync();
+
+                var stock = FileUtils.ParseCsvSingleStock(content);
+                if (stock.Prices.Count > 1)
+                {
+                    Stocks.Add(stock);
+                    var stockMetrics = OptimizerService.CalculateStockMetrics(stock);
+                    StockMetrics[stock.Name] = stockMetrics;
+                }
+            }
+
+            if (Stocks.Count < 2)
+            {
+                Error = "At least 2 stocks with sufficient price data are required.";
+                Stocks.Clear();
+                StockMetrics.Clear();
             }
         }
         catch (Exception ex)
         {
-            Error = $"Error: {ex.Message}";
+            Error = $"Error processing files: {ex.Message}";
+            Stocks.Clear();
+            StockMetrics.Clear();
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task CalculateOptimalAllocation()
+    {
+        if (Stocks.Count < 2) return;
+
+        IsCalculating = true;
+        Error = "";
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(100); // Allow UI to update
+            var result = OptimizerService.CalculateOptimalPortfolio(Stocks);
+            OptimalAllocation = result.Allocations;
+            PortfolioMetrics = result.Metrics;
+        }
+        catch (Exception ex)
+        {
+            Error = $"Error calculating optimal allocation: {ex.Message}";
+        }
+        finally
+        {
+            IsCalculating = false;
+            StateHasChanged();
         }
     }
 }

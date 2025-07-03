@@ -8,8 +8,8 @@ namespace PortfolioOptimizer.Data
     {
         [Key]
         public int Id { get; set; }
-        public List<DateTime> StartDate { get; set; } = new();
-        public List<DateTime> EndDate { get; set; } = new();
+        public DateTime StartDate { get; set; } = new();
+        public DateTime EndDate { get; set; } = new();
         public decimal AnnualReturn { get; set; }
         public decimal AnnualVolatility { get; set; }
         public decimal AnnualSharpeRatio { get; set; }
