@@ -1,4 +1,5 @@
-﻿@page "/portfolio"
+﻿@* PortfolioOptimizer/Components/Pages/Portfolio.razor *@
+@page "/portfolio"
 @using PortfolioOptimizer.Data;
 @using PortfolioOptimizer.Services
 @using PortfolioOptimizer.Services.Interfaces
@@ -10,54 +11,61 @@
 <h3>Modern Portfolio Theory (MPT) Portfolio Optimizer</h3>
 
 <div class="mb-3">
-    <label class="form-label">Upload Stock CSV Files (minimum 2 required):</label>
+    <label class="form-label">Upload Stock CSV Files:</label>
+    <div class="form-text mb-2">
+        You can upload either:
+        <ul>
+            <li>A single CSV file containing multiple stocks (with same date ranges)</li>
+            <li>Multiple CSV files with one stock each (minimum 2 required with same date range)</li>
+            <li>A combination of the above as long a it contains at least 2 different Stocks in total (same date range)</li>
+        </ul>
+    </div>
     <InputFile OnChange="HandleFiles" accept=".csv" multiple />
 </div>
 
 @if (Stocks.Any())
 {
-    <h4>Uploaded Stocks (@Stocks.Count)</h4>
-    @foreach (var stock in Stocks)
-    {
-        <div class="card mb-3">
-            <div class="card-header">
-                <h5>@stock.Name</h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <ul class="list-unstyled">
-                            <li><b>Price Rows:</b> @stock.Prices.Count</li>
-                            <li><b>Annualized Return:</b> @(StockMetrics[stock.Name].AnnualReturn.ToString("P2"))</li>
-                            <li><b>Volatility:</b> @(StockMetrics[stock.Name].AnnualVolatility.ToString("P2"))</li>
-                            <li><b>Sharpe Ratio:</b> @(StockMetrics[stock.Name].AnnualSharpeRatio.ToString("F2"))</li>
-                        </ul>
-                    </div>
-                    <div class="col-md-6">
-                        <table class="table table-sm">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Open</th>
-                                    <th>Close</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var price in stock.Prices.Take(5))
-                                {
-                                    <tr>
-                                        <td>@price.Date.ToString("yyyy-MM-dd")</td>
-                                        <td>@price.Open</td>
-                                        <td>@price.Close</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+    <div class="card mb-3">
+        <div class="card-header">
+            <h5>Stock Portfolio Summary (@Stocks.Count stocks)</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Stock Name</th>
+                            <th>Price Data Points</th>
+                            <th>Date Range</th>
+                            <th>Annual Return</th>
+                            <th>Volatility</th>
+                            <th>Sharpe Ratio</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var stock in Stocks)
+                        {
+                            <tr>
+                                <td><strong>@stock.Name</strong></td>
+                                <td>@stock.Prices.Count</td>
+                                <td>
+                                    @if (stock.Prices.Any())
+                                    {
+                                        var minDate = stock.Prices.Min(p => p.Date);
+                                        var maxDate = stock.Prices.Max(p => p.Date);
+                                        <small>@minDate.ToString("yyyy-MM-dd") to @maxDate.ToString("yyyy-MM-dd")</small>
+                                    }
+                                </td>
+                                <td>@(StockMetrics.ContainsKey(stock.Name) ? StockMetrics[stock.Name].AnnualReturn.ToString("P2") : "N/A")</td>
+                                <td>@(StockMetrics.ContainsKey(stock.Name) ? StockMetrics[stock.Name].AnnualVolatility.ToString("P2") : "N/A")</td>
+                                <td>@(StockMetrics.ContainsKey(stock.Name) ? StockMetrics[stock.Name].AnnualSharpeRatio.ToString("F2") : "N/A")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
             </div>
         </div>
-    }
+    </div>
 
     <div class="mb-3">
         <button class="btn btn-primary" @onclick="CalculateOptimalAllocation" disabled="@(Stocks.Count < 2 || IsCalculating)">
@@ -141,34 +149,56 @@
         StockMetrics.Clear();
         OptimalAllocation.Clear();
 
-        if (e.FileCount < 2)
-        {
-            Error = "Please select at least 2 CSV files.";
-            return;
-        }
-
         try
         {
+            var allStocks = new List<Stock>();
+            var fileCount = e.FileCount;
+
             foreach (var file in e.GetMultipleFiles())
             {
                 using var stream = file.OpenReadStream();
                 using var reader = new StreamReader(stream);
                 var content = await reader.ReadToEndAsync();
 
-                var stock = FileUtils.ParseCsvSingleStock(content);
-                if (stock.Prices.Count > 1)
-                {
-                    Stocks.Add(stock);
-                    var stockMetrics = OptimizerService.CalculateStockMetrics(stock);
-                    StockMetrics[stock.Name] = stockMetrics;
-                }
+                var stocksFromFile = FileUtils.ParseCsv(content);
+
+                // Filter stocks with sufficient data
+                var validStocks = stocksFromFile.Where(s => s.Prices.Count > 1).ToList();
+                allStocks.AddRange(validStocks);
             }
 
-            if (Stocks.Count < 2)
+            // Remove duplicates by stock name (keep the first occurrence)
+            var uniqueStocks = allStocks
+                .GroupBy(s => s.Name)
+                .Select(g => g.First())
+                .ToList();
+
+            // Validation logic
+            if (fileCount > 1 && uniqueStocks.Count < 2)
             {
-                Error = "At least 2 stocks with sufficient price data are required.";
-                Stocks.Clear();
-                StockMetrics.Clear();
+                Error = "When uploading multiple files, at least 2 stocks with sufficient price data are required.";
+                return;
+            }
+            else if (fileCount == 1 && uniqueStocks.Count < 2)
+            {
+                Error = "When uploading a single file, it must contain at least 2 different stocks.";
+                return;
+            }
+
+            // Validate date ranges are consistent
+            if (!FileUtils.ValidateDateRanges(uniqueStocks))
+            {
+                Error = "All stocks must have the same date ranges for accurate portfolio optimization.";
+                return;
+            }
+
+            Stocks = uniqueStocks;
+
+            // Calculate metrics for each stock
+            foreach (var stock in Stocks)
+            {
+                var stockMetrics = OptimizerService.CalculateStockMetrics(stock);
+                StockMetrics[stock.Name] = stockMetrics;
             }
         }
         catch (Exception ex)
