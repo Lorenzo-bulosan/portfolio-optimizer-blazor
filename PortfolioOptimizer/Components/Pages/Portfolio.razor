@@ -189,7 +189,7 @@
                                     <th>Stock</th>
                                     <th>Allocation</th>
                                     <th>Constraints from user</th>
-                                    <th>Weight</th>
+                                    <th>Optimal Weight</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -228,6 +228,7 @@
     public bool IsCalculating { get; set; } = false;
     public Dictionary<string, bool> SelectedStocks { get; set; } = new();
     public List<ChartDataPoint> PortfolioHistoricalReturns { get; set; } = new();
+    public List<ChartDataPoint> OptimalPortfolioHistoricalReturns { get; set; } = new();
     public Dictionary<string, List<ChartDataPoint>> StockHistoricalReturns { get; set; } = new();
 
     private async Task HandleFiles(InputFileChangeEventArgs e)
@@ -500,12 +501,20 @@
             OptimalAllocation = result.Allocations;
             PortfolioMetrics = result.Metrics;
 
-            // Calculate historical returns for charts
-            CalculateHistoricalReturns(selectedStocks.Select(s => s.Stock).ToList(), OptimalAllocation);
+            // Calculate historical returns for optimal portfolio
+            OptimalPortfolioHistoricalReturns = OptimizerService.CalculatePortfolioHistoricalReturns(
+                selectedStocks.Select(s => s.Stock).ToList(),
+                OptimalAllocation
+            );
 
             // Render charts after calculation
             await Task.Delay(100);
-            await RenderCharts();
+
+            // Render allocation pie chart
+            await RenderAllocationPieChart();
+
+            // Render line chart
+            await RenderHistoricalReturnsChart();
         }
         catch (Exception ex)
         {
@@ -515,22 +524,6 @@
         {
             IsCalculating = false;
             StateHasChanged();
-        }
-    }
-
-    private async Task RenderCharts()
-    {
-        try
-        {
-            // Render allocation pie chart
-            await RenderHistoricalReturnsChart();
-
-            // Render line chart
-            await RenderHistoricalReturnsChart();
-        }
-        catch (Exception ex)
-        {
-            Error = $"Error rendering charts: {ex.Message}";
         }
     }
 
@@ -550,6 +543,7 @@
                     x = p.Date.ToString("yyyy-MM-dd"),
                     y = (double)(p.Value * 100)
                 }).ToArray(),
+
                 stocks = StockHistoricalReturns.ToDictionary(
                     kvp => kvp.Key,
                     kvp => kvp.Value.Select(p => new
@@ -560,8 +554,17 @@
                 )
             };
 
+            var optimalPortfoliolineData = new
+            {
+                optimalPortfolio = OptimalPortfolioHistoricalReturns.Select(p => new
+                {
+                    x = p.Date.ToString("yyyy-MM-dd"),
+                    y = (double)(p.Value * 100)
+                }).ToArray()
+            };
+
             // Render line chart
-            await JSRuntime.InvokeVoidAsync("renderLineChart", "lineChart", lineData);
+            await JSRuntime.InvokeVoidAsync("renderLineChart", "lineChart", lineData, optimalPortfoliolineData);
         }
         catch (Exception ex)
         {

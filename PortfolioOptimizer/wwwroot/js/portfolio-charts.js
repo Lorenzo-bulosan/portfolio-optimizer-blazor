@@ -38,7 +38,7 @@ window.renderPieChart = function (canvasId, data) {
     });
 };
 
-window.renderLineChart = function (canvasId, data,) {
+window.renderLineChart = function (canvasId, data, optimalPortfolioLineData) {
     const ctx = document.getElementById(canvasId).getContext('2d');
 
     if (lineChart) {
@@ -56,6 +56,18 @@ window.renderLineChart = function (canvasId, data,) {
         borderWidth: 3,
         fill: false
     });
+
+    // Add optimal portfolio data
+    if (optimalPortfolioLineData.optimalPortfolio.length > 0) {
+        datasets.push({
+            label: 'Optimal Portfolio',
+            data: optimalPortfolioLineData.optimalPortfolio,
+            borderColor: '#FF1284',
+            backgroundColor: 'rgba(0, 0, 255, 0.1)',
+            borderWidth: 3,
+            fill: false
+        });
+    }
 
     // Add individual stock data
     const colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'];
