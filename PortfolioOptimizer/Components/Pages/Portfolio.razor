@@ -106,6 +106,10 @@
                     </tbody>
                 </table>
             </div>
+            <button class="btn btn-secondary" @onclick="DistributeCustomWeightsEqually"
+                    disabled="@(!SelectedStocks.Any())">
+                    <text>Distribute Equally</text>
+            </button>
         </div>
     </div>
 
@@ -122,18 +126,6 @@
                 <text>Build Portfolio</text>
             }
         </button>
-        <button class="btn btn-primary" @onclick="BuildOptimalPortfolio"
-                disabled="@(Stock.Where(s => SelectedStocks.ContainsKey(s.Stock.Name) && SelectedStocks[s.Stock.Name]).Count() < 2 || IsCalculating)">
-            @if (IsCalculating)
-            {
-                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                <text>Calculating...</text>
-            }
-            else
-            {
-                <text>Optimize Portfolio</text>
-            }
-        </button>
     </div>
 
 
@@ -141,11 +133,25 @@
     @if (PortfolioHistoricalReturns != null && PortfolioHistoricalReturns.Any() && StockHistoricalReturns != null && StockHistoricalReturns.Any())
     {
         <div class="row">
-            <div class="col-12">
+            <div class="col-10">
                 <h6>Historical Returns Comparison</h6>
                 <p class="form-text mb-2">Comparison showing the historical returns of your portfolio vs historical return of each stock</p>
                 <canvas id="lineChart"></canvas>
             </div>
+        </div>
+        <div class="mb-3">
+            <button class="btn btn-primary" @onclick="BuildOptimalPortfolio"
+                    disabled="@(Stock.Where(s => SelectedStocks.ContainsKey(s.Stock.Name) && SelectedStocks[s.Stock.Name]).Count() < 2 || IsCalculating)">
+                @if (IsCalculating)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                    <text>Calculating...</text>
+                }
+                else
+                {
+                    <text>Optimize Portfolio</text>
+                }
+            </button>
         </div>
     }
 
@@ -336,6 +342,25 @@
         SelectedStocks.Remove(name);
         StockMetrics.Remove(name);
         OptimalAllocation.Clear();
+        StateHasChanged();
+    }
+
+    private void DistributeCustomWeightsEqually()
+    {
+        if (Stock.Count < 2)
+        {
+            Error = "At least 2 stocks are required to distribute weights.";
+            return;
+        }
+        // Distribute weights equally among selected stocks
+        var selectedStocks = Stock.Where(s => SelectedStocks.ContainsKey(s.Stock.Name) && SelectedStocks[s.Stock.Name]).ToList();
+        var equalWeight = 100.0m / selectedStocks.Count;
+        foreach (var stockDetails in selectedStocks)
+        {
+            stockDetails.Weight = equalWeight;
+        }
+
+        Error = string.Empty;
         StateHasChanged();
     }
 
