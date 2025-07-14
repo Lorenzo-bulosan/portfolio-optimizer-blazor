@@ -6,6 +6,23 @@ namespace PortfolioOptimizer.Services
 {
     public static class FileUtils
     {
+
+        public static async Task<List<Stock>> ParseCsvFromStreamAsync(Stream stream)
+        {
+            using var reader = new StreamReader(stream);
+            var buffer = new char[81920]; // 80KB char buffer
+            var contentBuilder = new System.Text.StringBuilder();
+
+            int charsRead;
+            while ((charsRead = await reader.ReadBlockAsync(buffer, 0, buffer.Length)) > 0)
+            {
+                contentBuilder.Append(buffer, 0, charsRead);
+            }
+
+            var content = contentBuilder.ToString();
+            return ParseCsv(content);
+        }
+
         public static List<Stock> ParseCsv(string content)
         {
             using var reader = new StringReader(content);
@@ -17,14 +34,14 @@ namespace PortfolioOptimizer.Services
 
             // Find column indexes
             var headers = headerLine.Split(',');
-            int dateIdx = Array.IndexOf(headers, "date");
-            int openIdx = Array.IndexOf(headers, "open");
-            int closeIdx = Array.IndexOf(headers, "close");
-            int nameIdx = Array.IndexOf(headers, "Name");
+            int dateIdx = Array.FindIndex(headers, h => string.Equals(h, "date", StringComparison.OrdinalIgnoreCase));
+            int openIdx = Array.FindIndex(headers, h => string.Equals(h, "open", StringComparison.OrdinalIgnoreCase));
+            int closeIdx = Array.FindIndex(headers, h => string.Equals(h, "close", StringComparison.OrdinalIgnoreCase));
+            int nameIdx = Array.FindIndex(headers, h => string.Equals(h, "name", StringComparison.OrdinalIgnoreCase));
 
             // Required columns
             if (dateIdx == -1 || closeIdx == -1 || nameIdx == -1)
-                throw new InvalidDataException("CSV file missing required columns (date, open, close, Name).");
+                throw new InvalidDataException("CSV file missing required columns (date, open, close, name).");
 
             var stocksDict = new Dictionary<string, Stock>();
 
@@ -83,33 +100,51 @@ namespace PortfolioOptimizer.Services
             return stocks.FirstOrDefault() ?? new Stock();
         }
 
-        public static bool ValidateDateRanges(List<Stock> stocks)
+        public static (bool IsValid, List<string> FailingStocks) ValidateDateRanges(List<Stock> stocks)
         {
-            // Minimum 2 stocks required
-            if (stocks.Count < 2) return true;
+            if (stocks.Count < 2) return (true, new List<string>());
 
-            // Check if all stocks have at least same number of prices
-            var expectedCount = stocks.First().Prices.Count;
-            var allSamePriceCount = stocks.All(s => s.Prices.Count == expectedCount);
-            if (!allSamePriceCount) return false;
-
-            // Check if all stocks have the same dates as you can't compare some stocks with prices on Monday and others missing that Date even if overall they have the same count of prices
-            var firstStock = stocks.First();
-            if (!firstStock.Prices.Any()) return false;
-
-            var expectedDates = firstStock.Prices.Select(p => p.Date).OrderBy(d => d).ToList();
-
-            foreach (var stock in stocks.Skip(1))
+            // Early validation: check if all stocks have prices
+            if (stocks.Any(s => !s.Prices.Any()))
             {
-                var stockDates = stock.Prices.Select(p => p.Date).OrderBy(d => d).ToList();
+                return (false, stocks.Where(s => !s.Prices.Any()).Select(s => s.Name).ToList());
+            }
 
-                if (!expectedDates.SequenceEqual(stockDates))
+            // Quick check: if price counts differ
+            var expectedCount = stocks[0].Prices.Count;
+            var failingCounts = stocks.Where(s => s.Prices.Count != expectedCount).Select(s => s.Name).ToList();
+            if (failingCounts.Any()) return (false, failingCounts);
+
+            // For performance with large datasets, use HashSet for O(1) lookups
+            // Get sorted dates from first stock as reference
+            var referenceDates = stocks[0].Prices
+                .Select(p => p.Date)
+                .OrderBy(d => d)
+                .ToHashSet();
+
+            // Validate each subsequent stock against the reference
+            var failingDates = new List<string>();
+            for (int i = 1; i < stocks.Count; i++)
+            {
+                var stockDates = stocks[i].Prices
+                    .Select(p => p.Date)
+                    .ToHashSet();
+
+                // Quick count check first
+                if (stockDates.Count != referenceDates.Count)
                 {
-                    return false;
+                    failingDates.Add(stocks[i].Name);
+                    continue;
+                }
+
+                // Check if all dates match using SetEquals (more efficient than SequenceEqual for large sets)
+                if (!referenceDates.SetEquals(stockDates))
+                {
+                    failingDates.Add(stocks[i].Name);
                 }
             }
 
-            return true;
+            return (failingDates.Count == 0, failingDates);
         }
     }
 }

@@ -1,10 +1,11 @@
 ﻿@* PortfolioOptimizer/Components/Pages/Portfolio.razor *@
-@page "/portfolio"
+@page "/"
 @using PortfolioOptimizer.Data;
 @using PortfolioOptimizer.Services
 @using PortfolioOptimizer.Services.Interfaces
 @inject IOptimizerService OptimizerService
 @using Microsoft.AspNetCore.Components.Forms
+@inject IJSRuntime JSRuntime
 
 @rendermode InteractiveServer
 
@@ -15,50 +16,95 @@
     <div class="form-text mb-2">
         You can upload either:
         <ul>
-            <li>A single CSV file containing multiple stocks (with same date ranges)</li>
-            <li>Multiple CSV files with one stock each (minimum 2 required with same date range)</li>
-            <li>A combination of the above as long a it contains at least 2 different Stocks in total (same date range)</li>
+            <li>A single CSV file containing multiple stocks</li>
+            <li>Multiple CSV files with one stock each (minimum 2)</li>
+            <li>A combination of the above as long a it contains at least 2 different Stocks in total</li>
+            <li>
+                <a href="SampleFiles/sample-with-multiple-stocks.csv" download="sample-with-multiple-stocks.csv">
+                    Here's a Sample CSV
+                </a>
+            </li>
         </ul>
     </div>
-    <InputFile OnChange="HandleFiles" accept=".csv" multiple />
+
+    <label class="form-label">Key metrics will be calculated automatically based on the uploaded stock data:</label>
+    <div class="form-text mb-2">
+        With these you can
+        <ul>
+            <li>Select which stocks to include in the calculation of the optimal portfolio</li>
+            <li>Set minimum and maximum weight constraints for each stock e.g limit one stock to 30% max to avoid over-reliance on one stock</li>
+        </ul>
+    </div>
+
+    <div class="mb-2">
+        <InputFile OnChange="HandleFiles" accept=".csv" multiple />
+    </div>
+
+    @if (Stock.Any())
+    {
+        <button class="btn btn-secondary btn-sm" @onclick="ClearAllStocks">
+            Clear All Stocks
+        </button>
+    }
 </div>
 
-@if (Stocks.Any())
+@if (!string.IsNullOrEmpty(Error))
+{
+    <div class="alert alert-danger">@Error</div>
+}
+
+@if (Stock.Any())
 {
     <div class="card mb-3">
         <div class="card-header">
-            <h5>Stock Portfolio Summary (@Stocks.Count stocks)</h5>
+            <h5>Stock Portfolio Summary (@Stock.Count stocks)</h5>
         </div>
         <div class="card-body">
             <div class="table-responsive">
                 <table class="table table-striped">
                     <thead>
                         <tr>
+                            <th>Include</th>
                             <th>Stock Name</th>
+                            <th>Min Weight (%)</th>
+                            <th>Max Weight (%)</th>
                             <th>Price Data Points</th>
                             <th>Date Range</th>
                             <th>Annual Return</th>
                             <th>Volatility</th>
                             <th>Sharpe Ratio</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var stock in Stocks)
+                        @foreach (var stockDetails in Stock)
                         {
                             <tr>
-                                <td><strong>@stock.Name</strong></td>
-                                <td>@stock.Prices.Count</td>
                                 <td>
-                                    @if (stock.Prices.Any())
+                                    <input type="checkbox" @bind="SelectedStocks[stockDetails.Stock.Name]" />
+                                </td>
+                                <td><strong>@stockDetails.Stock.Name</strong></td>
+                                <td>
+                                    <InputNumber @bind-Value="stockDetails.WeightConstraint.MinWeight" class="form-control" />
+                                </td>
+                                <td>
+                                    <InputNumber @bind-Value="stockDetails.WeightConstraint.MaxWeight" class="form-control" />
+                                </td>
+                                <td>@stockDetails.Stock.Prices.Count</td>
+                                <td>
+                                    @if (stockDetails.Stock.Prices.Any())
                                     {
-                                        var minDate = stock.Prices.Min(p => p.Date);
-                                        var maxDate = stock.Prices.Max(p => p.Date);
+                                        var minDate = stockDetails.Stock.Prices.Min(p => p.Date);
+                                        var maxDate = stockDetails.Stock.Prices.Max(p => p.Date);
                                         <small>@minDate.ToString("yyyy-MM-dd") to @maxDate.ToString("yyyy-MM-dd")</small>
                                     }
                                 </td>
-                                <td>@(StockMetrics.ContainsKey(stock.Name) ? StockMetrics[stock.Name].AnnualReturn.ToString("P2") : "N/A")</td>
-                                <td>@(StockMetrics.ContainsKey(stock.Name) ? StockMetrics[stock.Name].AnnualVolatility.ToString("P2") : "N/A")</td>
-                                <td>@(StockMetrics.ContainsKey(stock.Name) ? StockMetrics[stock.Name].AnnualSharpeRatio.ToString("F2") : "N/A")</td>
+                                <td>@(StockMetrics.ContainsKey(stockDetails.Stock.Name) ? StockMetrics[stockDetails.Stock.Name].AnnualReturn.ToString("P2") : "N/A")</td>
+                                <td>@(StockMetrics.ContainsKey(stockDetails.Stock.Name) ? StockMetrics[stockDetails.Stock.Name].AnnualVolatility.ToString("P2") : "N/A")</td>
+                                <td>@(StockMetrics.ContainsKey(stockDetails.Stock.Name) ? StockMetrics[stockDetails.Stock.Name].AnnualSharpeRatio.ToString("F2") : "N/A")</td>
+                                <td>
+                                    <button class="btn btn-danger btn-sm" @onclick="() => RemoveStock(stockDetails.Stock.Name)">Remove</button>
+                                </td>
                             </tr>
                         }
                     </tbody>
@@ -68,7 +114,8 @@
     </div>
 
     <div class="mb-3">
-        <button class="btn btn-primary" @onclick="CalculateOptimalAllocation" disabled="@(Stocks.Count < 2 || IsCalculating)">
+        <button class="btn btn-primary" @onclick="CalculateOptimalAllocation"
+                disabled="@(Stock.Where(s => SelectedStocks.ContainsKey(s.Stock.Name) && SelectedStocks[s.Stock.Name]).Count() < 2 || IsCalculating)">
             @if (IsCalculating)
             {
                 <span class="spinner-border spinner-border-sm me-2" role="status"></span>
@@ -96,124 +143,207 @@
                         <strong>Portfolio Volatility:</strong> @PortfolioMetrics.AnnualVolatility.ToString("P2")
                     </div>
                     <div class="col-md-4">
-                        <strong>Sharpe Ratio:</strong> @PortfolioMetrics.AnnualSharpeRatio.ToString("F2")
+                        <strong>Portfolio Sharpe Ratio:</strong> @PortfolioMetrics.AnnualSharpeRatio.ToString("F2")
                     </div>
                 </div>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Stock</th>
-                            <th>Allocation</th>
-                            <th>Weight</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var allocation in OptimalAllocation)
-                        {
-                            <tr>
-                                <td>@allocation.Key</td>
-                                <td>@allocation.Value.ToString("P2")</td>
-                                <td>
-                                    <div class="progress">
-                                        <div class="progress-bar" role="progressbar" style="width: @(allocation.Value * 100)%">
-                                            @allocation.Value.ToString("P2")
-                                        </div>
-                                    </div>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
+
+                <!-- Pie Chart -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <h6>Portfolio Allocation</h6>
+                        <p class="form-text mb-2">Optimal distribution for maximum sharpe ratio while minimizing risk.</p>
+                        <canvas id="pieChart"></canvas>
+                    </div>
+                    <div class="col-md-6">
+                        <p class="form-text mb-2">You can change constraints of each stock above e.g at least 5% for stock "ABC".'</p>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Stock</th>
+                                    <th>Allocation</th>
+                                    <th>Constraints from user</th>
+                                    <th>Weight</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var allocation in OptimalAllocation)
+                                {
+                                    <tr>
+                                        <td>@allocation.Key</td>
+                                        <td>
+                                            <div class="progress">
+                                                <div class="progress-bar" role="progressbar" style="width:@(allocation.Value * 100)%"></div>
+                                            </div>
+                                        </td>
+                                        <td>@((Stock.Where(s => s.Stock.Name == @allocation.Key).First().WeightConstraint.MinWeight / 100).ToString("P2")) - @((Stock.Where(s => s.Stock.Name == @allocation.Key).First().WeightConstraint.MaxWeight / 100).ToString("P2"))</td>
+                                        <td>@allocation.Value.ToString("P2")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Historical Returns Chart -->
+                <div class="row">
+                    <div class="col-12">
+                        <h6>Historical Returns Comparison</h6>
+                        <p class="form-text mb-2">Comparison showing the historical returns of your optimal portfolio vs historical return of each stock</p>
+                        <canvas id="lineChart"></canvas>
+                    </div>
+                </div>
             </div>
         </div>
     }
 }
 
-@if (!string.IsNullOrEmpty(Error))
-{
-    <div class="alert alert-danger">@Error</div>
-}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+<script src="js/portfolio-charts.js"></script>
 
 @code {
-    public List<Stock> Stocks { get; set; } = new();
+    public List<StockDetails> Stock { get; set; } = new();
     public Dictionary<string, StockMetrics> StockMetrics { get; set; } = new();
     public Dictionary<string, decimal> OptimalAllocation { get; set; } = new();
     public PortfolioMetrics PortfolioMetrics { get; set; } = new();
     public string Error { get; set; } = string.Empty;
     public bool IsCalculating { get; set; } = false;
+    public Dictionary<string, bool> SelectedStocks { get; set; } = new();
+    public List<ChartDataPoint> PortfolioHistoricalReturns { get; set; } = new();
+    public Dictionary<string, List<ChartDataPoint>> StockHistoricalReturns { get; set; } = new();
 
     private async Task HandleFiles(InputFileChangeEventArgs e)
     {
         Error = "";
-        Stocks.Clear();
-        StockMetrics.Clear();
+        // Don't clear existing stocks - append new ones
+        var tempOptimalAllocation = OptimalAllocation;
         OptimalAllocation.Clear();
 
         try
         {
-            var allStocks = new List<Stock>();
+            var newStocks = new List<StockDetails>();
             var fileCount = e.FileCount;
+            const long maxStreamSize = 512 * 1024 * 1024; // 512MB
 
             foreach (var file in e.GetMultipleFiles())
             {
-                using var stream = file.OpenReadStream();
-                using var reader = new StreamReader(stream);
-                var content = await reader.ReadToEndAsync();
+                // Size pre-checks
+                if (file.Size > maxStreamSize)
+                {
+                    Error = $"File '{file.Name}' exceeds the maximum supported size of 512MB.";
+                    return;
+                }
 
-                var stocksFromFile = FileUtils.ParseCsv(content);
+                using var stream = file.OpenReadStream(maxAllowedSize: maxStreamSize);
+                var stocksFromFile = await FileUtils.ParseCsvFromStreamAsync(stream);
 
-                // Filter stocks with sufficient data
                 var validStocks = stocksFromFile.Where(s => s.Prices.Count > 1).ToList();
-                allStocks.AddRange(validStocks);
+                foreach (var stock in validStocks)
+                {
+                    // Check if stock already exists
+                    if (!Stock.Any(s => s.Stock.Name == stock.Name))
+                    {
+                        newStocks.Add(new StockDetails
+                        {
+                            Stock = stock,
+                            WeightConstraint = new WeightConstraint
+                            {
+                                MinWeight = 0.0m,
+                                MaxWeight = 100.0m
+                            }
+                        });
+                    }
+                }
             }
 
-            // Remove duplicates by stock name (keep the first occurrence)
-            var uniqueStocks = allStocks
-                .GroupBy(s => s.Name)
-                .Select(g => g.First())
-                .ToList();
+            // Merge with existing stocks, avoiding duplicates
+            var existingStockNames = Stock.Select(s => s.Stock.Name).ToHashSet();
+            var uniqueNewStocks = newStocks.Where(s => !existingStockNames.Contains(s.Stock.Name)).ToList();
 
-            // Validation logic
-            if (fileCount > 1 && uniqueStocks.Count < 2)
+            if (uniqueNewStocks.Any())
             {
-                Error = "When uploading multiple files, at least 2 stocks with sufficient price data are required.";
+                Stock.AddRange(uniqueNewStocks);
+
+                // Add to selected stocks (selected by default)
+                foreach (var stockDetails in uniqueNewStocks)
+                {
+                    SelectedStocks[stockDetails.Stock.Name] = true;
+                    stockDetails.WeightConstraint.MinWeight = 0.0m;
+                    stockDetails.WeightConstraint.MaxWeight = 100.0m;
+                }
+
+                // Calculate metrics for new stocks
+                foreach (var stockDetails in uniqueNewStocks)
+                {
+                    var stockMetrics = OptimizerService.CalculateStockMetrics(stockDetails.Stock);
+                    StockMetrics[stockDetails.Stock.Name] = stockMetrics;
+                }
+            }
+
+            // Validate minimum stock requirement
+            if (Stock.Count < 2)
+            {
+                Error = "At least 2 stocks with sufficient price data are required for portfolio optimization.";
                 return;
             }
-            else if (fileCount == 1 && uniqueStocks.Count < 2)
-            {
-                Error = "When uploading a single file, it must contain at least 2 different stocks.";
-                return;
-            }
 
-            // Validate date ranges are consistent
-            if (!FileUtils.ValidateDateRanges(uniqueStocks))
+            if (!uniqueNewStocks.Any())
             {
-                Error = "All stocks must have the same date ranges for accurate portfolio optimization.";
-                return;
-            }
-
-            Stocks = uniqueStocks;
-
-            // Calculate metrics for each stock
-            foreach (var stock in Stocks)
-            {
-                var stockMetrics = OptimizerService.CalculateStockMetrics(stock);
-                StockMetrics[stock.Name] = stockMetrics;
+                Error = "No new stocks were added. All stocks from the uploaded files already exist in the portfolio.";
             }
         }
         catch (Exception ex)
         {
             Error = $"Error processing files: {ex.Message}";
-            Stocks.Clear();
-            StockMetrics.Clear();
         }
 
         StateHasChanged();
     }
 
+    private void ClearAllStocks()
+    {
+        Stock.Clear();
+        StockMetrics.Clear();
+        OptimalAllocation.Clear();
+        SelectedStocks.Clear();
+        Error = "";
+        StateHasChanged();
+    }
+
     private async Task CalculateOptimalAllocation()
     {
-        if (Stocks.Count < 2) return;
+        // Filter to selected stocks
+        var selectedStocks = Stock.Where(s => SelectedStocks.ContainsKey(s.Stock.Name) && SelectedStocks[s.Stock.Name]).ToList();
+
+        if (selectedStocks.Count < 2)
+        {
+            Error = "At least 2 stocks are required for portfolio optimization.";
+            return;
+        }
+
+        // Validate weight constraints
+        foreach (var stockDetails in selectedStocks)
+        {
+            if (stockDetails.WeightConstraint.MinWeight > stockDetails.WeightConstraint.MaxWeight)
+            {
+                Error = $"Invalid weight constraint for {stockDetails.Stock.Name}: minimum weight ({stockDetails.WeightConstraint.MinWeight}%) cannot be greater than maximum weight ({stockDetails.WeightConstraint.MaxWeight}%).";
+                return;
+            }
+            if (stockDetails.WeightConstraint.MinWeight < 0)
+            {
+                Error = $"Invalid weight constraint for {stockDetails.Stock.Name}: minimum weight ({stockDetails.WeightConstraint.MinWeight}%) cannot be less than 0%).";
+                OptimalAllocation.Clear();
+                return;
+            }
+        }
+
+        // Check if constraints are feasible (sum of minimums <= 100%)
+        var totalMinWeight = selectedStocks.Sum(s => s.WeightConstraint.MinWeight);
+        if (totalMinWeight > 100.0m)
+        {
+            Error = $"Weight constraints are not feasible: sum of minimum weights ({totalMinWeight:F1}%) exceeds 100%.";
+            return;
+        }
 
         IsCalculating = true;
         Error = "";
@@ -222,9 +352,43 @@
         try
         {
             await Task.Delay(100); // Allow UI to update
-            var result = OptimizerService.CalculateOptimalPortfolio(Stocks);
+
+            // Validate date ranges for selected stocks only
+            var (isValid, failingStocks) = FileUtils.ValidateDateRanges(selectedStocks.Select(s => s.Stock).ToList());
+            if (!isValid)
+            {
+                Error = $"The following stocks do not have matching date ranges: {string.Join(", ", failingStocks)}. Please select a different combination or upload files with matching date ranges.";
+                IsCalculating = false;
+                StateHasChanged();
+                return;
+            }
+
+            // Create weight constraints for optimization
+            var constraints = new Dictionary<string, WeightConstraint>();
+            selectedStocks.ForEach(s =>
+            {
+                constraints[s.Stock.Name] = new WeightConstraint
+                {
+                    MinWeight = s.WeightConstraint.MinWeight / 100.0m, // Convert to decimal
+                    MaxWeight = s.WeightConstraint.MaxWeight / 100.0m  // Convert to decimal
+                };
+            });
+
+            var result = OptimizerService.CalculateOptimalPortfolio(selectedStocks.Select(s => s.Stock).ToList(), constraints);
             OptimalAllocation = result.Allocations;
             PortfolioMetrics = result.Metrics;
+
+            // Calculate historical returns for charts
+            PortfolioHistoricalReturns = OptimizerService.CalculatePortfolioHistoricalReturns(
+                selectedStocks.Select(s => s.Stock).ToList(),
+                OptimalAllocation);
+
+            StockHistoricalReturns = OptimizerService.CalculateStockHistoricalReturns(
+                selectedStocks.Select(s => s.Stock).ToList());
+
+            // Render charts after calculation
+            await Task.Delay(100);
+            await RenderCharts();
         }
         catch (Exception ex)
         {
@@ -234,6 +398,62 @@
         {
             IsCalculating = false;
             StateHasChanged();
+        }
+    }
+
+    private void RemoveStock(string name)
+    {
+        var stockToRemove = Stock.FirstOrDefault(s => s.Stock.Name == name);
+        if (stockToRemove != null)
+        {
+            Stock.Remove(stockToRemove);
+        }
+        SelectedStocks.Remove(name);
+        StockMetrics.Remove(name);
+        OptimalAllocation.Clear();
+        StateHasChanged();
+    }
+
+    private async Task RenderCharts()
+    {
+        try
+        {
+            // Ensure DOM updates are flushed
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(100); // Give the DOM time to render the canvas elements
+
+            // Render pie chart
+            var pieData = OptimalAllocation.Select(kvp => new
+            {
+                label = kvp.Key,
+                value = (double)(kvp.Value * 100)
+            }).ToArray();
+
+            await JSRuntime.InvokeVoidAsync("renderPieChart", "pieChart", pieData);
+
+            // Render line chart
+            var lineData = new
+            {
+                portfolio = PortfolioHistoricalReturns.Select(p => new
+                {
+                    x = p.Date.ToString("yyyy-MM-dd"),
+                    y = (double)(p.Value * 100)
+                }).ToArray(),
+                stocks = StockHistoricalReturns.ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => kvp.Value.Select(p => new
+                    {
+                        x = p.Date.ToString("yyyy-MM-dd"),
+                        y = (double)(p.Value * 100)
+                    }).ToArray()
+                )
+            };
+
+            await JSRuntime.InvokeVoidAsync("renderLineChart", "lineChart", lineData);
+        }
+        catch (Exception ex)
+        {
+            Error = $"Error rendering charts: {ex.Message}";
         }
     }
 }

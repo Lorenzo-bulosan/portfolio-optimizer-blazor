@@ -54,7 +54,17 @@ namespace PortfolioOptimizer.Services
 
         public OptimalPortfolioResult CalculateOptimalPortfolio(List<Stock> stocks)
         {
-            _logger.LogTrace("Calculating optimal portfolio for {StockCount} stocks", stocks.Count);
+            // Create default constraints (0% to 100% for all stocks)
+            var defaultConstraints = stocks.ToDictionary(
+                s => s.Name,
+                s => new WeightConstraint { MinWeight = 0.0m, MaxWeight = 100.0m }
+            );
+            return CalculateOptimalPortfolio(stocks, defaultConstraints);
+        }
+
+        public OptimalPortfolioResult CalculateOptimalPortfolio(List<Stock> stocks, Dictionary<string, WeightConstraint> weightConstraints)
+        {
+            _logger.LogTrace("Calculating optimal portfolio for {StockCount} stocks with weight constraints", stocks.Count);
 
             if (stocks.Count < 2)
                 throw new InvalidOperationException("At least 2 stocks are required for portfolio optimization.");
@@ -64,8 +74,8 @@ namespace PortfolioOptimizer.Services
             var expectedReturns = CalculateExpectedReturns(returnsMatrix);
             var covarianceMatrix = CalculateCovarianceMatrix(returnsMatrix);
 
-            // Find optimal weights using mean-variance optimization
-            var optimalWeights = FindOptimalWeights(expectedReturns, covarianceMatrix);
+            // Find optimal weights using mean-variance optimization with constraints
+            var optimalWeights = FindOptimalWeights(expectedReturns, covarianceMatrix, stocks, weightConstraints);
 
             // Calculate portfolio metrics
             var portfolioReturn = CalculatePortfolioReturn(expectedReturns, optimalWeights);
@@ -85,12 +95,96 @@ namespace PortfolioOptimizer.Services
                 AnnualSharpeRatio = (decimal)sharpeRatio
             };
 
-            _logger.LogTrace("Successfully calculated optimal portfolio");
+            _logger.LogTrace("Successfully calculated optimal portfolio with constraints");
             return new OptimalPortfolioResult
             {
                 Allocations = allocations,
                 Metrics = portfolioMetrics
             };
+        }
+
+        public List<ChartDataPoint> CalculatePortfolioHistoricalReturns(
+            List<Stock> stocks,
+            Dictionary<string, decimal> allocations)
+        {
+            _logger.LogTrace("Calculating portfolio historical returns");
+
+            // Find common date range
+            var allDates = stocks.SelectMany(s => s.Prices.Select(p => p.Date)).Distinct().OrderBy(d => d).ToList();
+            var commonDates = allDates.Where(date => stocks.All(stock => stock.Prices.Any(p => p.Date == date))).ToList();
+
+            if (commonDates.Count < 2)
+                throw new InvalidOperationException("Insufficient overlapping price data between stocks.");
+
+            var portfolioReturns = new List<ChartDataPoint>();
+            decimal cumulativeReturn = 1.0m;
+
+            for (int i = 1; i < commonDates.Count; i++)
+            {
+                decimal portfolioDailyReturn = 0m;
+
+                foreach (var stock in stocks)
+                {
+                    if (!allocations.ContainsKey(stock.Name)) continue;
+
+                    var prevPrice = stock.Prices.First(p => p.Date == commonDates[i - 1]).Close;
+                    var currentPrice = stock.Prices.First(p => p.Date == commonDates[i]).Close;
+
+                    if (prevPrice == 0) continue;
+
+                    var stockReturn = (currentPrice - prevPrice) / prevPrice;
+                    portfolioDailyReturn += allocations[stock.Name] * stockReturn;
+                }
+
+                cumulativeReturn *= (1 + portfolioDailyReturn);
+                portfolioReturns.Add(new ChartDataPoint
+                {
+                    Date = commonDates[i],
+                    Value = cumulativeReturn - 1m // Convert to return percentage
+                });
+            }
+
+            return portfolioReturns;
+        }
+
+        public Dictionary<string, List<ChartDataPoint>> CalculateStockHistoricalReturns(List<Stock> stocks)
+        {
+            _logger.LogTrace("Calculating individual stock historical returns");
+
+            var result = new Dictionary<string, List<ChartDataPoint>>();
+
+            foreach (var stock in stocks)
+            {
+                var stockReturns = new List<ChartDataPoint>();
+                var prices = stock.Prices.OrderBy(p => p.Date).ToList();
+
+                if (prices.Count < 2) continue;
+
+                decimal cumulativeReturn = 1.0m;
+                stockReturns.Add(new ChartDataPoint
+                {
+                    Date = prices[0].Date,
+                    Value = 0m
+                });
+
+                for (int i = 1; i < prices.Count; i++)
+                {
+                    if (prices[i - 1].Close == 0) continue;
+
+                    var dailyReturn = (prices[i].Close - prices[i - 1].Close) / prices[i - 1].Close;
+                    cumulativeReturn *= (1 + dailyReturn);
+
+                    stockReturns.Add(new ChartDataPoint
+                    {
+                        Date = prices[i].Date,
+                        Value = cumulativeReturn - 1m
+                    });
+                }
+
+                result[stock.Name] = stockReturns;
+            }
+
+            return result;
         }
 
         private double[,] CalculateReturnsMatrix(List<Stock> stocks)
@@ -178,53 +272,130 @@ namespace PortfolioOptimizer.Services
             return covMatrix;
         }
 
-        private double[] FindOptimalWeights(double[] expectedReturns, double[,] covarianceMatrix, double riskFreeRate = 0.0)
+        private double[] FindOptimalWeights(
+            double[] expectedReturns,
+            double[,] covarianceMatrix,
+            List<Stock> stocks,
+            Dictionary<string, WeightConstraint> weightConstraints,
+            double riskFreeRate = 0.0)
         {
             int n = expectedReturns.Length;
             double[] excessReturns = expectedReturns.Subtract(riskFreeRate);
 
-            // Objective: maximize Sharpe ratio = (w·excessReturns) / sqrt(wᵀ Σ w)
-            // Since Nelder-Mead minimizes, minimize negative Sharpe ratio + penalties for constraints
+            // Extract min/max weight constraints
+            double[] minWeights = new double[n];
+            double[] maxWeights = new double[n];
 
+            for (int i = 0; i < n; i++)
+            {
+                var name = stocks[i].Name;
+                if (weightConstraints.TryGetValue(name, out var constraint))
+                {
+                    minWeights[i] = (double)constraint.MinWeight;
+                    maxWeights[i] = (double)constraint.MaxWeight;
+                }
+                else
+                {
+                    minWeights[i] = 0.0;
+                    maxWeights[i] = 1.0;
+                }
+            }
+
+            // Objective: maximize Sharpe ratio -> minimize -Sharpe + constraint penalties
             Func<double[], double> objective = weights =>
             {
-                // Penalize weights outside [0,1]
                 double penalty = 0.0;
-                foreach (var w in weights)
+
+                double sumWeights = 0.0;
+                for (int i = 0; i < n; i++)
                 {
-                    if (w < 0) penalty += 1000 * (-w);
-                    if (w > 1) penalty += 1000 * (w - 1);
+                    double w = weights[i];
+                    sumWeights += w;
+
+                    if (w < minWeights[i])
+                        penalty += 10000 * Math.Pow(minWeights[i] - w, 2);
+                    if (w > maxWeights[i])
+                        penalty += 10000 * Math.Pow(w - maxWeights[i], 2);
                 }
 
-                // Penalize sum(weights) != 1
-                double sumWeights = weights.Sum();
-                penalty += 1000 * Math.Abs(sumWeights - 1.0);
+                // Enforce weights summing to 1
+                penalty += 10000 * Math.Pow(sumWeights - 1.0, 2);
 
-                double portReturn = weights.Dot(excessReturns);
+                double portfolioReturn = weights.Dot(excessReturns);
                 double variance = weights.Dot(covarianceMatrix).Dot(weights);
-                double stdDev = Math.Sqrt(variance);
+                double stdDev = Math.Sqrt(Math.Max(variance, 1e-10)); // Guard against zero
 
-                if (stdDev == 0) return 1e10 + penalty;
+                double sharpeRatio = portfolioReturn / stdDev;
 
-                double sharpe = portReturn / stdDev;
-
-                // Minimize negative Sharpe + penalty
-                return -sharpe + penalty;
+                return -sharpeRatio + penalty;
             };
 
-            // Initial guess: equal weights
-            double[] initialGuess = Vector.Create(n, 1.0 / n);
+            // Smarter initial guess: normalized min-weight baseline + proportionally distributed slack
+            double[] initialGuess = new double[n];
+            double totalMin = minWeights.Sum();
+            double slack = 1.0 - totalMin;
 
-            // Setup Nelder-Mead solver
-            var nm = new NelderMead(numberOfVariables: n, function: objective);
+            if (slack < 0)
+            {
+                // Normalize minWeights if they exceed 1.0
+                for (int i = 0; i < n; i++)
+                    initialGuess[i] = minWeights[i] / totalMin;
+            }
+            else
+            {
+                double totalSlackRoom = 0.0;
+                double[] room = new double[n];
+                for (int i = 0; i < n; i++)
+                {
+                    room[i] = Math.Max(0, maxWeights[i] - minWeights[i]);
+                    totalSlackRoom += room[i];
+                }
 
-            bool success = nm.Minimize(initialGuess);
+                for (int i = 0; i < n; i++)
+                {
+                    double weight = minWeights[i];
+                    if (totalSlackRoom > 0)
+                        weight += slack * (room[i] / totalSlackRoom);
+                    initialGuess[i] = weight;
+                }
+            }
+
+            // Run optimization
+            var optimizer = new NelderMead(n, objective);
+            bool success = optimizer.Minimize(initialGuess);
 
             if (!success)
-                throw new Exception("Optimization failed.");
+                throw new Exception("Optimization failed to converge.");
 
-            // Return optimized weights (may slightly violate constraints)
-            return nm.Solution;
+            // Normalize to exactly sum to 1
+            var solution = optimizer.Solution;
+            double total = solution.Sum();
+            if (Math.Abs(total - 1.0) > 1e-6)
+            {
+                for (int i = 0; i < n; i++)
+                    solution[i] /= total;
+            }
+
+            return solution;
+        }
+
+
+        // Overload for backward compatibility
+        private double[] FindOptimalWeights(double[] expectedReturns, double[,] covarianceMatrix, double riskFreeRate = 0.0)
+        {
+            int n = expectedReturns.Length;
+            var stocks = new List<Stock>();
+            var constraints = new Dictionary<string, WeightConstraint>();
+
+            // Create dummy stocks and default constraints for backward compatibility
+            for (int i = 0; i < n; i++)
+            {
+                var dummyStock = new Stock { Name = $"Stock_{i}" };
+                stocks.Add(dummyStock);
+                constraints[dummyStock.Name] = new WeightConstraint { MinWeight = 0.0m, MaxWeight = 100.0m };
+            }
+
+            return FindOptimalWeights(expectedReturns, covarianceMatrix, stocks, constraints, riskFreeRate);
         }
 
         private double CalculatePortfolioReturn(double[] expectedReturns, double[] weights)
