@@ -38,7 +38,7 @@ window.renderPieChart = function (canvasId, data) {
     });
 };
 
-window.renderLineChart = function (canvasId, data) {
+window.renderLineChart = function (canvasId, data,) {
     const ctx = document.getElementById(canvasId).getContext('2d');
 
     if (lineChart) {
@@ -49,7 +49,7 @@ window.renderLineChart = function (canvasId, data) {
 
     // Add portfolio data
     datasets.push({
-        label: 'Optimal Portfolio',
+        label: 'Original Portfolio',
         data: data.portfolio,
         borderColor: '#000000',
         backgroundColor: 'rgba(0, 0, 0, 0.1)',
