@@ -6,5 +6,7 @@ public class StockDetails
 
     public decimal Weight { get; set; } = new();
 
+    public decimal OptimalWeight { get; set; } = new();
+
     public WeightConstraint WeightConstraint { get; set; } = new();
 }

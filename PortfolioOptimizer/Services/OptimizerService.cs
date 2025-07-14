@@ -82,10 +82,14 @@ namespace PortfolioOptimizer.Services
             var portfolioVolatility = CalculatePortfolioVolatility(covarianceMatrix, optimalWeights);
             var sharpeRatio = portfolioVolatility > 0 ? portfolioReturn / portfolioVolatility : 0;
 
-            var allocations = new Dictionary<string, decimal>();
+            var stockDetails = new Dictionary<string, StockDetails>();
             for (int i = 0; i < stocks.Count; i++)
             {
-                allocations[stocks[i].Name] = (decimal)optimalWeights[i];
+                stockDetails.Add(stocks[i].Name, new StockDetails
+                {
+                    Stock = stocks[i],
+                    OptimalWeight = (decimal)optimalWeights[i]
+                });
             }
 
             var portfolioMetrics = new PortfolioMetrics
@@ -98,7 +102,7 @@ namespace PortfolioOptimizer.Services
             _logger.LogTrace("Successfully calculated optimal portfolio with constraints");
             return new OptimalPortfolioResult
             {
-                Allocations = allocations,
+                Stocks = stockDetails,
                 Metrics = portfolioMetrics
             };
         }
