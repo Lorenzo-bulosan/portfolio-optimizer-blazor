@@ -138,6 +138,11 @@
     <!-- Historical Returns Chart -->
     @if (PortfolioHistoricalReturns != null && PortfolioHistoricalReturns.Any() && StockHistoricalReturns != null && StockHistoricalReturns.Any())
     {
+        @if (IsCalculating)
+        {
+            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+        }
+
         <div class="row mb-3">
             <div class="col-10">
                 <h6>Historical Returns Comparison</h6>
@@ -183,6 +188,11 @@
 
     @if (ShowOptimalPortfolio)
     {
+        @if (IsCalculating)
+        {
+            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+        }
+
         <div class="card mt-3">
             <div class="card-header">
                 <h5>Portfolio Metrics (Optimized)</h5>
