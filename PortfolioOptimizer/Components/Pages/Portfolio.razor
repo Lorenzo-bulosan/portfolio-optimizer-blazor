@@ -86,7 +86,7 @@
                         {
                             <tr>
                                 <td>
-                                    <input type="checkbox" @bind="SelectedStocks[stockDetails.Stock.Name]" />
+                                    <input type="checkbox" @bind="SelectedStocks[stockDetails.Stock.Name]"/>
                                 </td>
                                 <td><strong>@stockDetails.Stock.Name</strong></td>
                                 <td>
@@ -145,21 +145,6 @@
                 <canvas id="lineChart"></canvas>
             </div>
         </div>
-        <div class="mb-3">
-            <button class="btn btn-primary" @onclick="BuildOptimalPortfolio"
-                    disabled="@(Stocks.Where(s => SelectedStocks.ContainsKey(s.Stock.Name) && SelectedStocks[s.Stock.Name]).Count() < 2 || IsCalculating)">
-                @if (IsCalculating)
-                {
-                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                    <text>Calculating...</text>
-                }
-                else
-                {
-                    <text>Optimize Portfolio</text>
-                }
-            </button>
-        </div>
-
         <div class="card">
             <div class="card-header">
                 <h5>Portfolio Metrics (Pre-Optimization)</h5>
@@ -177,6 +162,20 @@
                     </div>
                 </div>
             </div>
+        </div>
+        <div class="mb-3 mt-3">
+            <button class="btn btn-primary" @onclick="BuildOptimalPortfolio"
+                    disabled="@(Stocks.Where(s => SelectedStocks.ContainsKey(s.Stock.Name) && SelectedStocks[s.Stock.Name]).Count() < 2 || IsCalculating)">
+                @if (IsCalculating)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                    <text>Calculating...</text>
+                }
+                else
+                {
+                    <text>Optimize Portfolio</text>
+                }
+            </button>
         </div>
     }
 
@@ -221,7 +220,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var stock in Stocks)
+                                @foreach (var stock in SelectedStockDetails)
                                 {
                                     <tr>
                                         <td>@stock.Stock.Name</td>
@@ -250,6 +249,7 @@
 
 @code {
     public List<StockDetails> Stocks { get; set; } = new();
+    public List<StockDetails> SelectedStockDetails { get; set; } = new();
     public Dictionary<string, StockMetrics> StockMetrics { get; set; } = new();
     public bool ShowOptimalPortfolio { get; set; } = new();
     public PortfolioMetrics OriginalPortfolioMetrics { get; set; } = new();
@@ -439,12 +439,12 @@
         StateHasChanged();
     }
 
-    private List<StockDetails> GetSelectedStocksAndValidate()
+    private List<StockDetails> GetSelectedStocksAndValidate(List<StockDetails> stockDetailsList)
     {
         var emptyStocks = new List<StockDetails>();
 
         // Filter to selected stocks
-        var selectedStocks = Stocks.Where(s => SelectedStocks.ContainsKey(s.Stock.Name) && SelectedStocks[s.Stock.Name]).ToList();
+        var selectedStocks = stockDetailsList.Where(s => SelectedStocks.ContainsKey(s.Stock.Name) && SelectedStocks[s.Stock.Name]).ToList();
 
         if (selectedStocks.Count < 2)
         {
@@ -498,8 +498,9 @@
 
     private async Task BuildCustomPortfolio()
     {
+        ShowOptimalPortfolio = false;
         IsCalculating = true;
-        var selectedStocks = GetSelectedStocksAndValidate();
+        var selectedStocks = GetSelectedStocksAndValidate(Stocks);
 
         if (selectedStocks.Count < 2)
         {
@@ -529,13 +530,16 @@
         IsCalculating = false;
         Error = string.Empty;
         SuccessMessage = string.Empty;
+
+        // Build separate object for optimal portfolio to not interfere with the original portfolio
+        SelectedStockDetails = selectedStocks;
     }
 
     // Weight from allocation not from selected anymore
     private async Task BuildOptimalPortfolio()
     {
         IsCalculating = true;
-        var selectedStocks = GetSelectedStocksAndValidate();
+        var selectedStocks = GetSelectedStocksAndValidate(SelectedStockDetails);
 
         if (selectedStocks.Count < 2)
         {
@@ -567,7 +571,7 @@
             var result = OptimizerService.CalculateOptimalPortfolio(selectedStocks.Select(s => s.Stock).ToList(), constraints);
 
             // Update Stock details with optimal weights
-            foreach (var stock in Stocks.Where(s => SelectedStocks.ContainsKey(s.Stock.Name) && SelectedStocks[s.Stock.Name]).ToList())
+            foreach (var stock in selectedStocks)
             {
                 stock.OptimalWeight = result.Stocks[stock.Stock.Name].OptimalWeight;
             }
@@ -589,7 +593,7 @@
             await Task.Delay(100);
 
             // Render allocation pie chart
-            await RenderAllocationPieChart();
+            await RenderAllocationPieChart(selectedStocks);
 
             // Render line chart
             await RenderHistoricalReturnsChart();
@@ -681,7 +685,7 @@
         }
     }
 
-    private async Task RenderAllocationPieChart()
+    private async Task RenderAllocationPieChart(List<StockDetails> stocks)
     {
         try
         {
@@ -690,7 +694,7 @@
             await Task.Delay(100); // Give the DOM time to render the canvas elements
 
             // Prepare data for pie chart
-            var pieData = Stocks.Select(kvp => new
+            var pieData = stocks.Select(kvp => new
             {
                 label = kvp.Stock.Name,
                 value = (double)(kvp.OptimalWeight * 100)
