@@ -107,6 +107,50 @@ namespace PortfolioOptimizer.Services
             };
         }
 
+        public OptimalPortfolioResult CalculatePortfolioMetrics(List<StockDetails> stocks)
+        {
+            _logger.LogTrace("Calculating portfolio metrics for {StockCount} stocks with user weights", stocks.Count);
+
+            if (stocks.Count < 2)
+                throw new InvalidOperationException("At least 2 stocks are required for portfolio optimization.");
+
+            // Calculate returns matrix
+            var returnsMatrix = CalculateReturnsMatrix(stocks.Select(s => s.Stock).ToList());
+            var expectedReturns = CalculateExpectedReturns(returnsMatrix);
+            var covarianceMatrix = CalculateCovarianceMatrix(returnsMatrix);
+
+            var weights = stocks.Select(s => (double)s.Weight).ToArray();
+
+            // Calculate portfolio metrics
+            var portfolioReturn = CalculatePortfolioReturn(expectedReturns, weights);
+            var portfolioVolatility = CalculatePortfolioVolatility(covarianceMatrix, weights);
+            var sharpeRatio = portfolioVolatility > 0 ? portfolioReturn / portfolioVolatility : 0;
+
+            var stockDetails = new Dictionary<string, StockDetails>();
+            for (int i = 0; i < stocks.Count; i++)
+            {
+                stockDetails.Add(stocks[i].Stock.Name, new StockDetails
+                {
+                    Stock = stocks[i].Stock,
+                    OptimalWeight = (decimal)weights[i]
+                });
+            }
+
+            var portfolioMetrics = new PortfolioMetrics
+            {
+                AnnualReturn = (decimal)portfolioReturn,
+                AnnualVolatility = (decimal)portfolioVolatility,
+                AnnualSharpeRatio = (decimal)sharpeRatio
+            };
+
+            _logger.LogTrace("Successfully calculated portfolio with user weights");
+            return new OptimalPortfolioResult
+            {
+                Stocks = stockDetails,
+                Metrics = portfolioMetrics
+            };
+        }
+
         public List<ChartDataPoint> CalculatePortfolioHistoricalReturns(
             List<Stock> stocks,
             Dictionary<string, decimal> allocations)

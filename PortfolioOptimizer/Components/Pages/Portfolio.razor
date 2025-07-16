@@ -114,7 +114,7 @@
         </div>
     </div>
 
-    <div class="mb-3">
+    <div class="mb-3 my-4">
         <button class="btn btn-primary" @onclick="BuildCustomPortfolio"
                 disabled="@(Stocks.Where(s => SelectedStocks.ContainsKey(s.Stock.Name) && SelectedStocks[s.Stock.Name]).Count() < 2 || IsCalculating)">
             @if (IsCalculating)
@@ -133,7 +133,7 @@
     <!-- Historical Returns Chart -->
     @if (PortfolioHistoricalReturns != null && PortfolioHistoricalReturns.Any() && StockHistoricalReturns != null && StockHistoricalReturns.Any())
     {
-        <div class="row">
+        <div class="row mb-3">
             <div class="col-10">
                 <h6>Historical Returns Comparison</h6>
                 <p class="form-text mb-2">Comparison showing the historical returns of your portfolio vs historical return of each stock</p>
@@ -154,24 +154,45 @@
                 }
             </button>
         </div>
-    }
 
-    @if (ShowOptimalPortfolio)
-    {
         <div class="card">
             <div class="card-header">
-                <h5>Optimal Portfolio Allocation</h5>
+                <h5>Portfolio Metrics (Pre-Optimization)</h5>
             </div>
             <div class="card-body">
                 <div class="row mb-3">
                     <div class="col-md-4">
-                        <strong>Expected Annual Return:</strong> @PortfolioMetrics.AnnualReturn.ToString("P2")
+                        <strong>Expected Annual Return:</strong> @OriginalPortfolioMetrics.AnnualReturn.ToString("P2")
                     </div>
                     <div class="col-md-4">
-                        <strong>Portfolio Volatility:</strong> @PortfolioMetrics.AnnualVolatility.ToString("P2")
+                        <strong>Portfolio Volatility:</strong> @OriginalPortfolioMetrics.AnnualVolatility.ToString("P2")
                     </div>
                     <div class="col-md-4">
-                        <strong>Portfolio Sharpe Ratio:</strong> @PortfolioMetrics.AnnualSharpeRatio.ToString("F2")
+                        <strong>Portfolio Sharpe Ratio:</strong> @OriginalPortfolioMetrics.AnnualSharpeRatio.ToString("F2")
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+
+
+    @if (ShowOptimalPortfolio)
+    {
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5>Portfolio Metrics (Optimized)</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <strong>Expected Annual Return:</strong> @OptimalPortfolioMetrics.AnnualReturn.ToString("P2")
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Portfolio Volatility:</strong> @OptimalPortfolioMetrics.AnnualVolatility.ToString("P2")
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Portfolio Sharpe Ratio:</strong> @OptimalPortfolioMetrics.AnnualSharpeRatio.ToString("F2")
                     </div>
                 </div>
 
@@ -226,7 +247,8 @@
     public List<StockDetails> Stocks { get; set; } = new();
     public Dictionary<string, StockMetrics> StockMetrics { get; set; } = new();
     public bool ShowOptimalPortfolio { get; set; } = new();
-    public PortfolioMetrics PortfolioMetrics { get; set; } = new();
+    public PortfolioMetrics OriginalPortfolioMetrics { get; set; } = new();
+    public PortfolioMetrics OptimalPortfolioMetrics { get; set; } = new();
     public string Error { get; set; } = string.Empty;
     public bool IsCalculating { get; set; } = false;
     public Dictionary<string, bool> SelectedStocks { get; set; } = new();
@@ -444,6 +466,9 @@
                     kvp => kvp.Weight / 100m // Convert to decimal
                 );
 
+        var result = OptimizerService.CalculatePortfolioMetrics(selectedStocks);
+        OriginalPortfolioMetrics = result.Metrics;
+
         // Caculate returns for selected stocks and user defined weights
         CalculateHistoricalReturns(
             selectedStocks.Select(s=>s.Stock).ToList(),
@@ -490,7 +515,7 @@
                 stock.OptimalWeight = result.Stocks[stock.Stock.Name].OptimalWeight;
             }
 
-            PortfolioMetrics = result.Metrics;
+            OptimalPortfolioMetrics = result.Metrics;
 
             // Calculate historical returns for optimal portfolio
             OptimalPortfolioHistoricalReturns = OptimizerService.CalculatePortfolioHistoricalReturns(
