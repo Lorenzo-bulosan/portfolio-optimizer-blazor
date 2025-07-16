@@ -54,6 +54,11 @@
     <div class="alert alert-danger">@Error</div>
 }
 
+@if (!string.IsNullOrEmpty(SuccessMessage))
+{
+    <div class="alert alert-success">@SuccessMessage</div>
+}
+
 @if (Stocks.Any())
 {
     <div class="card mb-3">
@@ -250,6 +255,7 @@
     public PortfolioMetrics OriginalPortfolioMetrics { get; set; } = new();
     public PortfolioMetrics OptimalPortfolioMetrics { get; set; } = new();
     public string Error { get; set; } = string.Empty;
+    public string SuccessMessage { get; set; } = string.Empty;
     public bool IsCalculating { get; set; } = false;
     public Dictionary<string, bool> SelectedStocks { get; set; } = new();
     public List<ChartDataPoint> PortfolioHistoricalReturns { get; set; } = new();
@@ -260,6 +266,11 @@
     {
         Error = "";
         ShowOptimalPortfolio = false;
+
+        // Clear previous portfolio data to prevent old optimal portfolio from showing in charts
+        PortfolioHistoricalReturns.Clear();
+        OptimalPortfolioHistoricalReturns.Clear();
+        StockHistoricalReturns.Clear();
 
         try
         {
@@ -322,10 +333,7 @@
                 }
 
                 // Recalculate equal weights as there's more stocks now less weights for everyone
-                foreach (var stock in Stocks)
-                {
-                    stock.Weight = Math.Round(100m / Stocks.Count, 2);
-                }
+                DistributeCustomWeightsEqually();
             }
 
             // Validate minimum stock requirement
@@ -354,7 +362,17 @@
         StockMetrics.Clear();
         ShowOptimalPortfolio = false;
         SelectedStocks.Clear();
-        Error = "";
+
+        OriginalPortfolioMetrics = new();
+        OptimalPortfolioMetrics = new();
+
+        // Clear all chart data
+        PortfolioHistoricalReturns.Clear();
+        OptimalPortfolioHistoricalReturns.Clear();
+        StockHistoricalReturns.Clear();
+
+        Error = string.Empty;
+        SuccessMessage = string.Empty;
         StateHasChanged();
     }
 
@@ -368,6 +386,12 @@
         SelectedStocks.Remove(name);
         StockMetrics.Remove(name);
         ShowOptimalPortfolio = false;
+
+        // Clear chart data when removing stocks to prevent stale data
+        PortfolioHistoricalReturns.Clear();
+        OptimalPortfolioHistoricalReturns.Clear();
+        StockHistoricalReturns.Clear();
+
         StateHasChanged();
     }
 
@@ -380,13 +404,38 @@
         }
         // Distribute weights equally among selected stocks
         var selectedStocks = Stocks.Where(s => SelectedStocks.ContainsKey(s.Stock.Name) && SelectedStocks[s.Stock.Name]).ToList();
-        var equalWeight = 100.0m / selectedStocks.Count;
+
+        if (selectedStocks.Count == 0)
+        {
+            Error = "At least 1 stock must be selected to distribute weights.";
+            return;
+        }
+
+        // First, reset all weights to 0
+        foreach (var stockDetails in Stocks)
+        {
+            stockDetails.Weight = 0m;
+        }
+
+        // Calculate equal weight and handle rounding to ensure total is exactly 100%
+        var baseWeight = Math.Floor(100.0m / selectedStocks.Count * 100) / 100; // Round down to 2 decimal places
+        var remainder = 100.0m - (baseWeight * selectedStocks.Count);
+
+        // Distribute base weight to all selected stocks
         foreach (var stockDetails in selectedStocks)
         {
-            stockDetails.Weight = equalWeight;
+            stockDetails.Weight = baseWeight;
+        }
+
+        // Distribute the remainder (due to rounding) to the first few stocks
+        var remainderCents = (int)(remainder * 100);
+        for (int i = 0; i < remainderCents && i < selectedStocks.Count; i++)
+        {
+            selectedStocks[i].Weight += 0.01m;
         }
 
         Error = string.Empty;
+        SuccessMessage = "Redistributed weights equally";
         StateHasChanged();
     }
 
@@ -479,6 +528,7 @@
         await RenderHistoricalReturnsChart();
         IsCalculating = false;
         Error = string.Empty;
+        SuccessMessage = string.Empty;
     }
 
     // Weight from allocation not from selected anymore
@@ -487,9 +537,16 @@
         IsCalculating = true;
         var selectedStocks = GetSelectedStocksAndValidate();
 
+        if (selectedStocks.Count < 2)
+        {
+            IsCalculating = false;
+            return; // Validation already set the error message
+        }
+
         if (!ValidateWeightConstraints(selectedStocks))
         {
             IsCalculating = false;
+            return; // Validation already set the error message
         }
 
         try
@@ -510,7 +567,7 @@
             var result = OptimizerService.CalculateOptimalPortfolio(selectedStocks.Select(s => s.Stock).ToList(), constraints);
 
             // Update Stock details with optimal weights
-            foreach (var stock in Stocks)
+            foreach (var stock in Stocks.Where(s => SelectedStocks.ContainsKey(s.Stock.Name) && SelectedStocks[s.Stock.Name]).ToList())
             {
                 stock.OptimalWeight = result.Stocks[stock.Stock.Name].OptimalWeight;
             }
