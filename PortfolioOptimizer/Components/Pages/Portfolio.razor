@@ -39,6 +39,13 @@
 
     <div class="mb-2">
         <InputFile OnChange="HandleFiles" accept=".csv" multiple />
+        @if (IsUploading)
+        {
+            <div class="d-flex align-items-center">
+                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                <span>Uploading files...</span>
+            </div>
+        }
     </div>
 
     @if (Stocks.Any())
@@ -121,11 +128,11 @@
 
     <div class="mb-3 my-4">
         <button class="btn btn-primary" @onclick="BuildCustomPortfolio"
-                disabled="@(Stocks.Where(s => IncludedStocks.ContainsKey(s.Stock.Name) && IncludedStocks[s.Stock.Name]).Count() < 2 || IsCalculating)">
-            @if (IsCalculating)
+                disabled="@(Stocks.Where(s => IncludedStocks.ContainsKey(s.Stock.Name) && IncludedStocks[s.Stock.Name]).Count() < 2 || IsCalculatingOriginalPortfolio)">
+            @if (IsCalculatingOriginalPortfolio)
             {
                 <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                <text>Calculating...</text>
+                <text>Building Portfolio...</text>
             }
             else
             {
@@ -138,11 +145,6 @@
     <!-- Historical Returns Chart -->
     @if (PortfolioHistoricalReturns != null && PortfolioHistoricalReturns.Any() && StockHistoricalReturns != null && StockHistoricalReturns.Any())
     {
-        @if (IsCalculating)
-        {
-            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-        }
-
         <div class="row mb-3">
             <div class="col-10">
                 <h6>Historical Returns Comparison</h6>
@@ -170,11 +172,11 @@
         </div>
         <div class="mb-3 mt-3">
             <button class="btn btn-primary" @onclick="BuildOptimalPortfolio"
-                    disabled="@(Stocks.Where(s => IncludedStocks.ContainsKey(s.Stock.Name) && IncludedStocks[s.Stock.Name]).Count() < 2 || IsCalculating)">
-                @if (IsCalculating)
+                    disabled="@(Stocks.Where(s => IncludedStocks.ContainsKey(s.Stock.Name) && IncludedStocks[s.Stock.Name]).Count() < 2 || IsCalculatingOptimalPortfolio)">
+                @if (IsCalculatingOptimalPortfolio)
                 {
                     <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                    <text>Calculating...</text>
+                    <text>Optimizing Portfolio...</text>
                 }
                 else
                 {
@@ -186,11 +188,6 @@
 
     @if (ShowOptimalPortfolio)
     {
-        @if (IsCalculating)
-        {
-            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-        }
-
         <div class="card mt-3">
             <div class="card-header">
                 <h5>Portfolio Metrics (Optimized)</h5>
@@ -264,7 +261,9 @@
     public PortfolioMetrics OptimalPortfolioMetrics { get; set; } = new();
     public string Error { get; set; } = string.Empty;
     public string SuccessMessage { get; set; } = string.Empty;
-    public bool IsCalculating { get; set; } = false;
+    public bool IsCalculatingOriginalPortfolio { get; set; } = false;
+    public bool IsCalculatingOptimalPortfolio { get; set; } = false;
+    public bool IsUploading { get; set; } = false;
     public Dictionary<string, bool> IncludedStocks { get; set; } = new();
     public List<ChartDataPoint> PortfolioHistoricalReturns { get; set; } = new();
     public List<ChartDataPoint> OptimalPortfolioHistoricalReturns { get; set; } = new();
@@ -272,6 +271,7 @@
 
     private async Task HandleFiles(InputFileChangeEventArgs e)
     {
+        IsUploading = true;
         Error = "";
         ShowOptimalPortfolio = false;
 
@@ -360,8 +360,11 @@
         {
             Error = $"Error processing files: {ex.Message}";
         }
-
-        StateHasChanged();
+        finally
+        {
+            IsUploading = false;
+            StateHasChanged();
+        }
     }
 
     private void ClearAllStocks()
@@ -483,7 +486,7 @@
         if (!isValid)
         {
             Error = $"The following stocks do not have matching date ranges: {string.Join(", ", failingStocks)}. Please select a different combination or upload files with matching date ranges.";
-            IsCalculating = false;
+            IsCalculatingOriginalPortfolio = false;
             StateHasChanged();
             return emptyStocks;
         }
@@ -507,12 +510,16 @@
     private async Task BuildCustomPortfolio()
     {
         ShowOptimalPortfolio = false;
-        IsCalculating = true;
+        IsCalculatingOriginalPortfolio = true;
         var selectedStocks = GetSelectedStocksAndValidate(Stocks);
+        StateHasChanged();
+
+        // Allow time for UI to update before calculations
+        await Task.Delay(500);
 
         if (selectedStocks.Count < 2)
         {
-            IsCalculating = false;
+            IsCalculatingOriginalPortfolio = false;
             PortfolioHistoricalReturns.Clear();
             StockHistoricalReturns.Clear();
             return; // Validation already set the error message
@@ -535,29 +542,37 @@
 
         // Render charts after calculation
         await RenderHistoricalReturnsChart();
-        IsCalculating = false;
+        IsCalculatingOriginalPortfolio = false;
         Error = string.Empty;
         SuccessMessage = string.Empty;
 
         // Build separate object for optimal portfolio to not interfere with the original portfolio
         StocksForOptimalPortfolio = selectedStocks;
+
+        await Task.Delay(500);
+        StateHasChanged();
     }
 
     // Weight from allocation not from selected anymore
     private async Task BuildOptimalPortfolio()
     {
-        IsCalculating = true;
+        IsCalculatingOptimalPortfolio = true;
+
+        StateHasChanged();
+        // Allow time for UI to update before calculations
+        await Task.Delay(500);
+
         var selectedStocks = GetSelectedStocksAndValidate(StocksForOptimalPortfolio);
 
         if (selectedStocks.Count < 2)
         {
-            IsCalculating = false;
+            IsCalculatingOptimalPortfolio = false;
             return; // Validation already set the error message
         }
 
         if (!ValidateWeightConstraints(selectedStocks))
         {
-            IsCalculating = false;
+            IsCalculatingOptimalPortfolio = false;
             return; // Validation already set the error message
         }
 
@@ -612,7 +627,7 @@
         }
         finally
         {
-            IsCalculating = false;
+            IsCalculatingOptimalPortfolio = false;
             StateHasChanged();
         }
     }
@@ -627,12 +642,12 @@
             if (stockDetails.WeightConstraint.MinWeight > stockDetails.WeightConstraint.MaxWeight)
             {
                 errorMessage.AppendLine($"Invalid weight constraint for {stockDetails.Stock.Name}: minimum weight ({stockDetails.WeightConstraint.MinWeight}%) cannot be greater than maximum weight ({stockDetails.WeightConstraint.MaxWeight}%).");
-                
+
             }
             if (stockDetails.WeightConstraint.MinWeight < 0)
             {
                 errorMessage.AppendLine($"Invalid weight constraint for {stockDetails.Stock.Name}: minimum weight ({stockDetails.WeightConstraint.MinWeight}%) cannot be less than 0%).");
-                
+
             }
         }
 
