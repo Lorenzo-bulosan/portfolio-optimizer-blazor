@@ -1,0 +1,21 @@
+﻿.nav-bg-color {
+    background-color: rgb(11, 13, 42) ;
+}
+
+.bg-main-color {
+/*    background-color: rgb(241, 237, 255, 0.8);*/
+/*    background-color: rgb(234, 234, 234, 0.41);*/
+    background-color: rgb(235, 234, 234, 0.33);
+}
+
+@media (min-width: 1280px) {
+    .center-half-width-lg {
+        width: 50%;
+        margin-left: 25%;
+    }
+
+    .center-three-quarter-width-lg {
+        width: 70%;
+        margin-left: 15%;
+    }
+}

@@ -86,7 +86,7 @@
                         {
                             <tr>
                                 <td>
-                                    <input type="checkbox" @bind="SelectedStocks[stockDetails.Stock.Name]"/>
+                                    <input type="checkbox" @bind="IncludedStocks[stockDetails.Stock.Name]" />
                                 </td>
                                 <td><strong>@stockDetails.Stock.Name</strong></td>
                                 <td>
@@ -113,7 +113,7 @@
                 </table>
             </div>
             <button class="btn btn-secondary" @onclick="DistributeCustomWeightsEqually"
-                    disabled="@(!SelectedStocks.Any())">
+                    disabled="@(!IncludedStocks.Any())">
                     <text>Distribute Equally</text>
             </button>
         </div>
@@ -121,7 +121,7 @@
 
     <div class="mb-3 my-4">
         <button class="btn btn-primary" @onclick="BuildCustomPortfolio"
-                disabled="@(Stocks.Where(s => SelectedStocks.ContainsKey(s.Stock.Name) && SelectedStocks[s.Stock.Name]).Count() < 2 || IsCalculating)">
+                disabled="@(Stocks.Where(s => IncludedStocks.ContainsKey(s.Stock.Name) && IncludedStocks[s.Stock.Name]).Count() < 2 || IsCalculating)">
             @if (IsCalculating)
             {
                 <span class="spinner-border spinner-border-sm me-2" role="status"></span>
@@ -170,7 +170,7 @@
         </div>
         <div class="mb-3 mt-3">
             <button class="btn btn-primary" @onclick="BuildOptimalPortfolio"
-                    disabled="@(Stocks.Where(s => SelectedStocks.ContainsKey(s.Stock.Name) && SelectedStocks[s.Stock.Name]).Count() < 2 || IsCalculating)">
+                    disabled="@(Stocks.Where(s => IncludedStocks.ContainsKey(s.Stock.Name) && IncludedStocks[s.Stock.Name]).Count() < 2 || IsCalculating)">
                 @if (IsCalculating)
                 {
                     <span class="spinner-border spinner-border-sm me-2" role="status"></span>
@@ -228,7 +228,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var stock in SelectedStockDetails)
+                                @foreach (var stock in StocksForOptimalPortfolio)
                                 {
                                     <tr>
                                         <td>@stock.Stock.Name</td>
@@ -257,7 +257,7 @@
 
 @code {
     public List<StockDetails> Stocks { get; set; } = new();
-    public List<StockDetails> SelectedStockDetails { get; set; } = new();
+    public List<StockDetails> StocksForOptimalPortfolio { get; set; } = new();
     public Dictionary<string, StockMetrics> StockMetrics { get; set; } = new();
     public bool ShowOptimalPortfolio { get; set; } = new();
     public PortfolioMetrics OriginalPortfolioMetrics { get; set; } = new();
@@ -265,7 +265,7 @@
     public string Error { get; set; } = string.Empty;
     public string SuccessMessage { get; set; } = string.Empty;
     public bool IsCalculating { get; set; } = false;
-    public Dictionary<string, bool> SelectedStocks { get; set; } = new();
+    public Dictionary<string, bool> IncludedStocks { get; set; } = new();
     public List<ChartDataPoint> PortfolioHistoricalReturns { get; set; } = new();
     public List<ChartDataPoint> OptimalPortfolioHistoricalReturns { get; set; } = new();
     public Dictionary<string, List<ChartDataPoint>> StockHistoricalReturns { get; set; } = new();
@@ -328,7 +328,7 @@
                 // Add to selected stocks (selected by default)
                 foreach (var stockDetails in uniqueNewStocks)
                 {
-                    SelectedStocks[stockDetails.Stock.Name] = true;
+                    IncludedStocks[stockDetails.Stock.Name] = true;
                     stockDetails.WeightConstraint.MinWeight = 0.0m;
                     stockDetails.WeightConstraint.MaxWeight = 100.0m;
                 }
@@ -369,7 +369,7 @@
         Stocks.Clear();
         StockMetrics.Clear();
         ShowOptimalPortfolio = false;
-        SelectedStocks.Clear();
+        IncludedStocks.Clear();
 
         OriginalPortfolioMetrics = new();
         OptimalPortfolioMetrics = new();
@@ -391,7 +391,7 @@
         {
             Stocks.Remove(stockToRemove);
         }
-        SelectedStocks.Remove(name);
+        IncludedStocks.Remove(name);
         StockMetrics.Remove(name);
         ShowOptimalPortfolio = false;
 
@@ -411,7 +411,7 @@
             return;
         }
         // Distribute weights equally among selected stocks
-        var selectedStocks = Stocks.Where(s => SelectedStocks.ContainsKey(s.Stock.Name) && SelectedStocks[s.Stock.Name]).ToList();
+        var selectedStocks = Stocks.Where(s => IncludedStocks.ContainsKey(s.Stock.Name) && IncludedStocks[s.Stock.Name]).ToList();
 
         if (selectedStocks.Count == 0)
         {
@@ -452,7 +452,7 @@
         var emptyStocks = new List<StockDetails>();
 
         // Filter to selected stocks
-        var selectedStocks = stockDetailsList.Where(s => SelectedStocks.ContainsKey(s.Stock.Name) && SelectedStocks[s.Stock.Name]).ToList();
+        var selectedStocks = stockDetailsList.Where(s => IncludedStocks.ContainsKey(s.Stock.Name) && IncludedStocks[s.Stock.Name]).ToList();
 
         if (selectedStocks.Count < 2)
         {
@@ -540,14 +540,14 @@
         SuccessMessage = string.Empty;
 
         // Build separate object for optimal portfolio to not interfere with the original portfolio
-        SelectedStockDetails = selectedStocks;
+        StocksForOptimalPortfolio = selectedStocks;
     }
 
     // Weight from allocation not from selected anymore
     private async Task BuildOptimalPortfolio()
     {
         IsCalculating = true;
-        var selectedStocks = GetSelectedStocksAndValidate(SelectedStockDetails);
+        var selectedStocks = GetSelectedStocksAndValidate(StocksForOptimalPortfolio);
 
         if (selectedStocks.Count < 2)
         {
