@@ -157,10 +157,10 @@
             <div class="card-body">
                 <div class="row mb-3">
                     <div class="col-md-4">
-                        <strong>Expected Annual Return:</strong> @OriginalPortfolioMetrics.AnnualReturn.ToString("P2")
+                        <strong>Expected Annual Return:</strong> @OriginalPortfolioMetrics.AnnualReturn.ToString("F2")%
                     </div>
                     <div class="col-md-4">
-                        <strong>Portfolio Volatility:</strong> @OriginalPortfolioMetrics.AnnualVolatility.ToString("P2")
+                        <strong>Portfolio Volatility:</strong> @OriginalPortfolioMetrics.AnnualVolatility.ToString("F2")%
                     </div>
                     <div class="col-md-4">
                         <strong>Portfolio Sharpe Ratio:</strong> @OriginalPortfolioMetrics.AnnualSharpeRatio.ToString("F2")
@@ -183,8 +183,6 @@
             </button>
         </div>
     }
-
-
 
     @if (ShowOptimalPortfolio)
     {
