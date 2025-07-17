@@ -24,7 +24,7 @@ namespace PortfolioOptimizer.Services
         }
 
         public static List<Stock> ParseCsv(string content)
-        {
+        {            
             using var reader = new StringReader(content);
 
             // Headers
@@ -38,10 +38,13 @@ namespace PortfolioOptimizer.Services
             int openIdx = Array.FindIndex(headers, h => string.Equals(h, "open", StringComparison.OrdinalIgnoreCase));
             int closeIdx = Array.FindIndex(headers, h => string.Equals(h, "close", StringComparison.OrdinalIgnoreCase));
             int nameIdx = Array.FindIndex(headers, h => string.Equals(h, "name", StringComparison.OrdinalIgnoreCase));
+            int adjCloseIdx = Array.FindIndex(headers, h => string.Equals(h, "adj close", StringComparison.OrdinalIgnoreCase));
 
             // Required columns
             if (dateIdx == -1 || closeIdx == -1 || nameIdx == -1)
-                throw new InvalidDataException("CSV file missing required columns (date, open, close, name).");
+                throw new InvalidDataException("CSV file missing required columns (date, open, close, name). 'adj close' will be used instead of close if it exists");
+
+            var useAdjClose = adjCloseIdx != -1;
 
             var stocksDict = new Dictionary<string, Stock>();
 
@@ -63,6 +66,14 @@ namespace PortfolioOptimizer.Services
                     continue;
                 if (!decimal.TryParse(fields[closeIdx], NumberStyles.Any, CultureInfo.InvariantCulture, out decimal close))
                     continue;
+
+                // If 'adj close' exists and is different from 'close', use it
+                if (useAdjClose)
+                {
+                    close = decimal.TryParse(fields[adjCloseIdx], NumberStyles.Any, CultureInfo.InvariantCulture, out decimal adjClose) 
+                        ? adjClose 
+                        : close;
+                }
 
                 string stockName = fields[nameIdx];
 

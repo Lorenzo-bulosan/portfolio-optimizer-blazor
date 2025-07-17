@@ -110,11 +110,14 @@ window.renderLineChart = function (canvasId, data, optimalPortfolioLineData) {
                 y: {
                     title: {
                         display: true,
-                        text: 'Cumulative Return (%)'
+                        text: 'Portfolio Value ($)'
                     },
                     ticks: {
                         callback: function (value) {
-                            return value.toFixed(1) + '%';
+                            return '$' + value.toLocaleString('en-US', {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 0
+                            });
                         }
                     }
                 }
@@ -126,7 +129,10 @@ window.renderLineChart = function (canvasId, data, optimalPortfolioLineData) {
                 tooltip: {
                     callbacks: {
                         label: function (context) {
-                            return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + '%';
+                            return context.dataset.label + ': $' + context.parsed.y.toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2
+                            });
                         }
                     }
                 }
@@ -134,3 +140,7 @@ window.renderLineChart = function (canvasId, data, optimalPortfolioLineData) {
         }
     });
 };
+
+window.scrollToElement = function (elementId) {
+    document.getElementById(elementId).scrollIntoView({ behavior: "smooth", block: "end" });
+}

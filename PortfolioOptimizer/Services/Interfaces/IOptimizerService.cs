@@ -9,6 +9,8 @@ namespace PortfolioOptimizer.Services.Interfaces
         OptimalPortfolioResult CalculateOptimalPortfolio(List<Stock> stocks);
         OptimalPortfolioResult CalculateOptimalPortfolio(List<Stock> stocks, Dictionary<string, WeightConstraint> weightConstraints);
         List<ChartDataPoint> CalculatePortfolioHistoricalReturns(List<Stock> stocks, Dictionary<string, decimal> allocations);
+        List<ChartDataPoint> CalculatePortfolioHistoricalReturns(List<Stock> stocks, Dictionary<string, decimal> allocations, decimal? initialInvestment);
         Dictionary<string, List<ChartDataPoint>> CalculateStockHistoricalReturns(List<Stock> stocks);
+        Dictionary<string, List<ChartDataPoint>> CalculateStockHistoricalReturns(List<Stock> stocks, decimal? initialInvestment);
     }
 }

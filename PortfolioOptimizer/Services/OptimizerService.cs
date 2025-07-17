@@ -155,6 +155,14 @@ namespace PortfolioOptimizer.Services
             List<Stock> stocks,
             Dictionary<string, decimal> allocations)
         {
+            return CalculatePortfolioHistoricalReturns(stocks, allocations, null);
+        }
+
+        public List<ChartDataPoint> CalculatePortfolioHistoricalReturns(
+            List<Stock> stocks,
+            Dictionary<string, decimal> allocations,
+            decimal? initialInvestment)
+        {
             _logger.LogTrace("Calculating portfolio historical returns");
 
             // Find common date range
@@ -166,6 +174,16 @@ namespace PortfolioOptimizer.Services
 
             var portfolioReturns = new List<ChartDataPoint>();
             decimal cumulativeReturn = 1.0m;
+
+            // Add initial point
+            if (initialInvestment.HasValue)
+            {
+                portfolioReturns.Add(new ChartDataPoint
+                {
+                    Date = commonDates[0],
+                    Value = initialInvestment.Value
+                });
+            }
 
             for (int i = 1; i < commonDates.Count; i++)
             {
@@ -185,10 +203,15 @@ namespace PortfolioOptimizer.Services
                 }
 
                 cumulativeReturn *= (1 + portfolioDailyReturn);
+                
+                var returnValue = initialInvestment.HasValue 
+                    ? initialInvestment.Value * cumulativeReturn  // Dollar value
+                    : cumulativeReturn - 1m;                     // Percentage return
+
                 portfolioReturns.Add(new ChartDataPoint
                 {
                     Date = commonDates[i],
-                    Value = cumulativeReturn - 1m // Convert to return percentage
+                    Value = returnValue
                 });
             }
 
@@ -196,6 +219,11 @@ namespace PortfolioOptimizer.Services
         }
 
         public Dictionary<string, List<ChartDataPoint>> CalculateStockHistoricalReturns(List<Stock> stocks)
+        {
+            return CalculateStockHistoricalReturns(stocks, null);
+        }
+
+        public Dictionary<string, List<ChartDataPoint>> CalculateStockHistoricalReturns(List<Stock> stocks, decimal? initialInvestment)
         {
             _logger.LogTrace("Calculating individual stock historical returns");
 
@@ -209,10 +237,13 @@ namespace PortfolioOptimizer.Services
                 if (prices.Count < 2) continue;
 
                 decimal cumulativeReturn = 1.0m;
+                
+                // Add initial point
+                var initialValue = initialInvestment ?? 0m;
                 stockReturns.Add(new ChartDataPoint
                 {
                     Date = prices[0].Date,
-                    Value = 0m
+                    Value = initialValue
                 });
 
                 for (int i = 1; i < prices.Count; i++)
@@ -222,10 +253,14 @@ namespace PortfolioOptimizer.Services
                     var dailyReturn = (prices[i].Close - prices[i - 1].Close) / prices[i - 1].Close;
                     cumulativeReturn *= (1 + dailyReturn);
 
+                    var returnValue = initialInvestment.HasValue 
+                        ? initialInvestment.Value * cumulativeReturn  // Dollar value
+                        : cumulativeReturn - 1m;                     // Percentage return
+
                     stockReturns.Add(new ChartDataPoint
                     {
                         Date = prices[i].Date,
-                        Value = cumulativeReturn - 1m
+                        Value = returnValue
                     });
                 }
 
