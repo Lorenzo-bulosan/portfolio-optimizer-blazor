@@ -15,20 +15,28 @@
 <div class="mb-3">
     <label class="form-label">Upload Stock CSV Files:</label>
     <div class="form-text mb-2">
-        You can upload either:
+        You can upload files either:
         <ul>
             <li>
-                A single CSV file containing multiple stocks like: <a href="SampleFiles/AAPL.csv" download="AAPL.csv">AAPL.csv</a> and <a href="SampleFiles/ABBV.csv" download="ABBV.csv">ABBV.csv</a>
+                A single CSV file containing multiple stocks like: <a href="SampleFiles/ContainsMultipleStocks.csv" download="ContainsMultipleStocks.csv">ContainsMultipleStocks.csv</a>
             </li>
             <li>
-                Multiple CSV files with one stock each (minimum 2) like: <a href="SampleFiles/ContainsMultipleStocks.csv" download="ContainsMultipleStocks.csv">ContainsMultipleStocks.csv</a>
+                Multiple CSV files with one stock each (minimum 2) like: <a href="SampleFiles/AAPL.csv" download="AAPL.csv">AAPL.csv</a> and <a href="SampleFiles/ABBV.csv" download="ABBV.csv">ABBV.csv</a>
             </li>
             <li>A combination of the above as long a it contains at least 2 different Stocks in total</li>
         </ul>
-        <p>
-            <strong>Important:</strong> The CSV files should contain a "Date" column, "Name" column and a "Close" column with stock prices.
-            If it contains a column called "Adj Close" this will be used for calculations instead of the Close price: <a href="SampleFiles/sample-with-multiple-stocks-from-2018-07-01_2025-07-15.csv" download="ContainsMultipleStocksWithAdjClose.csv">ContainsMultipleStocksWithAdjClose.csv</a>
-        </p>
+        <strong>Important:</strong> The CSV files should contain a "Date" column, "Name" column and a "Close" column with stock prices.
+        <ul>
+            <li>
+                If it contains a column called "Adj Close" this will be used for calculations instead of the Close price like this: <a href="SampleFiles/sample-with-multiple-stocks-from-2018-07-01_2025-07-15.csv" download="ContainsMultipleStocksWithAdjClose.csv">ContainsMultipleStocksWithAdjClose.csv</a>
+            </li>
+            <li>
+                It is preferable to use data with "Adj Close" and if you do make sure all the other stock data have "Adj Close"!
+            </li>
+            <li>
+                <u>You can't mix some data with "Adj Close" and other without as this will cause issues with calculations.</u>
+            </li>
+        </ul>
     </div>
 
     <label class="form-label">Key metrics will be calculated automatically based on the uploaded stock data:</label>
@@ -72,7 +80,7 @@
                         <tr>
                             <th>Include</th>
                             <th>Stock Name</th>
-                            <th>Weight</th>
+                            <th>Allocation (%)</th>
                             <th>Price Data Points</th>
                             <th>Date Range</th>
                             <th>Annual Return</th>
@@ -211,7 +219,7 @@
                         <canvas id="pieChart"></canvas>
                     </div>
                     <div class="col-md-6">
-                        <p class="form-text mb-2">These are the optimal weights for your stocks. You can add min/max constraints for each stock and recalculate the optimal portfolio e.g at least 5% for stock "ABC".'</p>
+                        <p class="form-text mb-2">These are the optimal allocations for your stocks. You can add min/max constraints for each stock and recalculate the optimal portfolio e.g at least 5% for stock "ABC".'</p>
                         <table class="table">
                             <thead>
                                 <tr>
@@ -219,7 +227,7 @@
                                     <th>Allocation</th>
                                     <th>Min %</th>
                                     <th>Max %</th>
-                                    <th>Optimal Weight</th>
+                                    <th>Optimal Allocation</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -421,7 +429,7 @@
     {
         if (Stocks.Count < 2)
         {
-            Error = "At least 2 stocks are required to distribute weights.";
+            Error = "At least 2 stocks are required to distribute allocations.";
             return;
         }
         // Distribute weights equally among selected stocks
@@ -429,7 +437,7 @@
 
         if (selectedStocks.Count == 0)
         {
-            Error = "At least 1 stock must be selected to distribute weights.";
+            Error = "At least 1 stock must be selected to distribute allocations.";
             return;
         }
 
@@ -457,7 +465,7 @@
         }
 
         Error = string.Empty;
-        SuccessMessage = "Redistributed weights equally! But you can change it how ever you want as long as it totals 100%";
+        SuccessMessage = "Redistributed allocations equally! But you can change it how ever you want as long as it totals 100%";
         StateHasChanged();
     }
 
@@ -478,7 +486,7 @@
         var totalUserDefinedWeights = selectedStocks.Sum(s => s.Weight);
         if (totalUserDefinedWeights != 100.0m)
         {
-            Error = $"Weight allocation are not feasible: sum of weights ({totalUserDefinedWeights:F1}%) does not equal 100%.";
+            Error = $"Weight allocation are not feasible: sum of allocations ({totalUserDefinedWeights:F1}%) does not equal 100%.";
             return emptyStocks;
         }
 
@@ -674,7 +682,7 @@
         var totalMinWeight = stocks.Sum(s => s.WeightConstraint.MinWeight);
         if (totalMinWeight > 100.0m)
         {
-            errorMessage.AppendLine($"Weight constraints are not feasible: sum of minimum weights ({totalMinWeight:F1}%) exceeds 100%.");
+            errorMessage.AppendLine($"Weight constraints are not feasible: sum of minimum allocation ({totalMinWeight:F1}%) exceeds 100%.");
         }
 
         Error = errorMessage.ToString();
