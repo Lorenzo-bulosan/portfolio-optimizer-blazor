@@ -1,7 +1,10 @@
-# PortfolioOptimizer
 
+# PortfolioOptimizer
 The goal of this project is to create a portfolio optimizer that can help investors maximize their returns while minimizing risk.
 The optimizer will use historical stock data to calculate the optimal allocation of assets in a portfolio.
+
+### Hosted in Azure
+https://portfolio-optimizer-fwczgpddf7e3ajaz.northeurope-01.azurewebsites.net/
 
 ## Current Features
 
